@@ -104,6 +104,7 @@ impl DeploykitServer {
                     .unwrap_or_else(|| not_set_error(field)),
                 "user" => serde_json::to_string(&self.config.user.clone())
                     .unwrap_or_else(|_| not_set_error(field)),
+                "rtc_as_localtime" => self.config.rtc_as_localtime.to_string(),
                 _ => {
                     error!("Unknown field: {field}");
                     serde_json::to_string(&DeploykitError::unknown_field(field))
@@ -148,7 +149,7 @@ fn set_config_inner(
             config.timezone = Some(value.to_string());
             Ok(())
         }
-        "flavor" => {
+        "flaver" => {
             config.flavor = Some(value.to_string());
             Ok(())
         }
@@ -161,6 +162,10 @@ fn set_config_inner(
                 .map_err(|_| DeploykitError::SetValue("user".to_string(), value.to_string()))?;
 
             config.user = Some(user);
+            Ok(())
+        }
+        "hostname" => {
+            config.hostname = Some(value.to_string());
             Ok(())
         }
         "rtc_as_localtime" => match value {
