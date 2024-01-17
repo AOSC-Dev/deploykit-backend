@@ -39,7 +39,7 @@ struct InstallConfig {
     // TODO: add parttion option
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct User {
     username: String,
     password: String,
@@ -102,6 +102,8 @@ impl DeploykitServer {
                     .mirror_url
                     .clone()
                     .unwrap_or_else(|| not_set_error(field)),
+                "user" => serde_json::to_string(&self.config.user.clone())
+                    .unwrap_or_else(|_| not_set_error(field)),
                 _ => {
                     error!("Unknown field: {field}");
                     serde_json::to_string(&DeploykitError::unknown_field(field))
@@ -125,6 +127,11 @@ impl DeploykitServer {
     fn get_progress(&self) -> String {
         serde_json::to_string(&self.progress).unwrap_or_else(|_| "Failed to serialize".to_string())
     }
+
+    fn reset_config(&mut self) -> String {
+        self.config = InstallConfig::default();
+        "ok".to_string()
+    }
 }
 
 fn set_config_inner(
@@ -147,6 +154,13 @@ fn set_config_inner(
         }
         "mirror_url" => {
             config.mirror_url = Some(value.to_string());
+            Ok(())
+        }
+        "user" => {
+            let user = serde_json::from_str::<User>(value)
+                .map_err(|_| DeploykitError::SetValue("user".to_string(), value.to_string()))?;
+
+            config.user = Some(user);
             Ok(())
         }
         "rtc_as_localtime" => match value {
