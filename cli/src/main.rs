@@ -100,5 +100,8 @@ async fn main() -> Result<()> {
 
     println!("{}", proxy.get_config("").await?);
 
+    proxy.reset_config().await?;
+    println!("{}", proxy.get_config("").await?);
+
     Ok(())
 }
