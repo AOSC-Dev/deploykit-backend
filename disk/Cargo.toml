@@ -1,5 +1,5 @@
 [package]
-name = "partition"
+name = "disk"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 libparted = "0.1"
 libparted-sys = "0.3"
+tracing = "0.1"
+fancy-regex = "0.13"
+thiserror = "1.0"
