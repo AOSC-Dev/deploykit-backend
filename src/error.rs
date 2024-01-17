@@ -10,9 +10,8 @@ pub enum DeploykitError {
         field: String,
         error: GetFieldErrKind,
     },
-    #[error("Failed to get config: {0:?}")]
+    #[error("Failed to get config: {0}")]
     GetConfig(String),
-
 }
 
 #[derive(Debug, Serialize)]
