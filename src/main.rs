@@ -2,6 +2,7 @@ use std::future::pending;
 
 use eyre::Result;
 use serde::{Deserialize, Serialize};
+use tracing::level_filters::LevelFilter;
 use tracing::{debug, error};
 use tracing_subscriber::fmt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
@@ -10,6 +11,19 @@ use zbus::{dbus_interface, ConnectionBuilder};
 use crate::error::DeploykitError;
 
 mod error;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeploykitServer {
+    config: InstallConfig,
+    progress: ProgressStatus,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ProgressStatus {
+    Pending,
+    Working(String, u8),
+    Done,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct InstallConfig {
@@ -27,7 +41,7 @@ impl Default for InstallConfig {
 }
 
 #[dbus_interface(name = "io.aosc.Deploykit1")]
-impl InstallConfig {
+impl DeploykitServer {
     fn get_config(&self, field: &str) -> String {
         if field.is_empty() {
             match serde_json::to_string(self) {
@@ -40,20 +54,20 @@ impl InstallConfig {
             }
         } else {
             match field {
-                "locale" => self.locale.clone().unwrap_or_else(|| {
+                "locale" => self.config.locale.clone().unwrap_or_else(|| {
                     error!("field {field} is not set");
                     serde_json::to_string(&DeploykitError::not_set(field))
-                        .expect("Failed to serialize error")
+                        .expect("Failed to serialize")
                 }),
-                "timezone" => self.timezone.clone().unwrap_or_else(|| {
+                "timezone" => self.config.timezone.clone().unwrap_or_else(|| {
                     error!("field {field} is not set");
                     serde_json::to_string(&DeploykitError::not_set(field))
-                        .expect("Failed to serialize error")
+                        .expect("Failed to serialize")
                 }),
                 _ => {
                     error!("Unknown field: {field}");
                     serde_json::to_string(&DeploykitError::unknown_field(field))
-                        .expect("Failed to serialize error")
+                        .expect("Failed to serialize")
                 }
             }
         }
@@ -61,7 +75,11 @@ impl InstallConfig {
 
     fn set_locale(&mut self, locale: &str) {
         // TODO: 检查 locale 是否合法
-        self.locale = Some(locale.to_string());
+        self.config.locale = Some(locale.to_string());
+    }
+
+    fn get_progress(&self) -> String {
+        serde_json::to_string(&self.progress).expect("Failed to serialize")
     }
 }
 
@@ -74,13 +92,20 @@ async fn main() -> Result<()> {
             .with(fmt::layer().with_filter(filter))
             .init();
     } else {
-        tracing_subscriber::registry().with(fmt::layer()).init();
+        tracing_subscriber::registry()
+            .with(fmt::layer())
+            .with(LevelFilter::DEBUG)
+            .init();
     }
 
-    let install_config = InstallConfig::default();
+    let deploykit_server = DeploykitServer {
+        config: InstallConfig::default(),
+        progress: ProgressStatus::Pending,
+    };
+
     let _conn = ConnectionBuilder::system()?
         .name("io.aosc.Deploykit")?
-        .serve_at("/io/aosc/Deploykit", install_config)?
+        .serve_at("/io/aosc/Deploykit", deploykit_server)?
         .build()
         .await?;
 
