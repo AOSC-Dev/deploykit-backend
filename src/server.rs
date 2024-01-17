@@ -32,6 +32,25 @@ struct InstallConfig {
     timezone: Option<String>,
     flavor: Option<String>,
     mirror_url: Option<String>,
+    user: Option<User>,
+    rtc_as_localtime: bool,
+    hostname: Option<String>,
+    swapfile: SwapFile,
+    // TODO: add parttion option
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct User {
+    username: String,
+    password: String,
+    root_password: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum SwapFile {
+    Automatic,
+    Custom(u64),
+    Disable,
 }
 
 impl Default for InstallConfig {
@@ -41,6 +60,10 @@ impl Default for InstallConfig {
             timezone: None,
             flavor: None,
             mirror_url: None,
+            user: None,
+            rtc_as_localtime: false,
+            hostname: None,
+            swapfile: SwapFile::Automatic,
         }
     }
 }
@@ -59,10 +82,26 @@ impl DeploykitServer {
             }
         } else {
             match field {
-                "locale" => self.config.locale.clone().unwrap_or_else(|| not_set_error(field)),
-                "timezone" => self.config.timezone.clone().unwrap_or_else(|| not_set_error(field)),
-                "flaver" => self.config.flavor.clone().unwrap_or_else(|| not_set_error(field)),
-                "mirror_url" => self.config.mirror_url.clone().unwrap_or_else(|| not_set_error(field)),
+                "locale" => self
+                    .config
+                    .locale
+                    .clone()
+                    .unwrap_or_else(|| not_set_error(field)),
+                "timezone" => self
+                    .config
+                    .timezone
+                    .clone()
+                    .unwrap_or_else(|| not_set_error(field)),
+                "flaver" => self
+                    .config
+                    .flavor
+                    .clone()
+                    .unwrap_or_else(|| not_set_error(field)),
+                "mirror_url" => self
+                    .config
+                    .mirror_url
+                    .clone()
+                    .unwrap_or_else(|| not_set_error(field)),
                 _ => {
                     error!("Unknown field: {field}");
                     serde_json::to_string(&DeploykitError::unknown_field(field))
@@ -110,6 +149,20 @@ fn set_config_inner(
             config.mirror_url = Some(value.to_string());
             Ok(())
         }
+        "rtc_as_localtime" => match value {
+            "0" | "false" => {
+                config.rtc_as_localtime = false;
+                Ok(())
+            }
+            "1" | "true" => {
+                config.rtc_as_localtime = true;
+                Ok(())
+            }
+            _ => Err(DeploykitError::SetValue(
+                field.to_string(),
+                value.to_string(),
+            )),
+        },
         _ => {
             error!("Unknown field: {field}");
             Err(DeploykitError::unknown_field(field))

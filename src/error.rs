@@ -12,12 +12,20 @@ pub enum DeploykitError {
     },
     #[error("Failed to get config: {0}")]
     GetConfig(String),
+    #[error("Failed to set field: {0}, value: {1} is illegal")]
+    SetValue(String, String),
 }
 
 #[derive(Debug, Serialize)]
 pub enum GetFieldErrKind {
     NotSet,
     UnknownField,
+}
+
+
+#[derive(Debug, Serialize)]
+pub enum SetFieldErrKind {
+
 }
 
 impl Display for GetFieldErrKind {
