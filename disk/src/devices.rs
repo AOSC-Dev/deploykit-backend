@@ -1,13 +1,13 @@
 use std::path::Path;
 
 use fancy_regex::Regex;
-use libparted::Device;
+use libparted::{Device, Disk, DiskType};
 use tracing::info;
 
 use crate::PartitionError;
 
 pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
-    libparted::Device::devices(true).filter(|dev| {
+    Device::devices(true).filter(|dev| {
         let is_sata = device_is_sata(dev.path());
         info!("{} is sata: {is_sata}", dev.path().display());
 
@@ -47,12 +47,12 @@ fn device_is_match(path: &Path, pattern: &str) -> bool {
 }
 
 pub fn device_is_empty(dev: &Path) -> Result<bool, PartitionError> {
-    let mut device = libparted::Device::new(dev).map_err(|e| PartitionError::OpenDevice {
+    let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
         path: dev.display().to_string(),
         err: e,
     })?;
 
-    let disk = libparted::Disk::new(&mut device).map_err(|e| PartitionError::OpenDisk {
+    let disk = Disk::new(&mut device).map_err(|e| PartitionError::OpenDisk {
         path: dev.display().to_string(),
         err: e,
     })?;
@@ -60,4 +60,32 @@ pub fn device_is_empty(dev: &Path) -> Result<bool, PartitionError> {
     let mut parts = disk.parts();
 
     Ok(parts.all(|x| x.get_path().is_none()))
+}
+
+pub fn create_parition_table(dev: &Path) -> Result<(), PartitionError> {
+    let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
+        path: dev.display().to_string(),
+        err: e,
+    })?;
+
+    let part_table = if is_efi_booted() { "gpt" } else { "msdos" };
+
+    let mut disk =
+        Disk::new_fresh(&mut device, DiskType::get(part_table).unwrap()).map_err(|e| {
+            PartitionError::NewPartitionTable {
+                path: dev.display().to_string(),
+                err: e,
+            }
+        })?;
+
+    disk.commit().map_err(|e| PartitionError::CommitChanges {
+        path: dev.display().to_string(),
+        err: e,
+    })?;
+
+    Ok(())
+}
+
+pub fn is_efi_booted() -> bool {
+    Path::new("/sys/firmware/efi").exists()
 }
