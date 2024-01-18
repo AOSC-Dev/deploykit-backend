@@ -8,11 +8,12 @@ use std::{
 use disk_types::{BlockDeviceExt, FileSystem, PartitionExt, PartitionType};
 use libparted::{Device, Disk, DiskType, FileSystemType, Geometry, IsZero, Partition};
 use libparted_sys::{PedPartitionFlag, PedPartitionType};
+use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 use crate::{is_efi_booted, PartitionError};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DkPartition {
     pub path: Option<PathBuf>,
     pub parent_path: Option<PathBuf>,

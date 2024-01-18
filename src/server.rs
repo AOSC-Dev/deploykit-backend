@@ -1,7 +1,10 @@
 use std::path::Path;
 
-use disk::{devices::list_devices, partition::auto_create_partitions};
-use install::DownloadType;
+use disk::{
+    devices::list_devices,
+    partition::{auto_create_partitions, DkPartition},
+};
+use install::{DownloadType, InstallConfigPrepare, User};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use zbus::dbus_interface;
@@ -10,14 +13,14 @@ use crate::error::DeploykitError;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeploykitServer {
-    config: InstallConfig,
+    config: InstallConfigPrepare,
     progress: ProgressStatus,
 }
 
 impl Default for DeploykitServer {
     fn default() -> Self {
         Self {
-            config: InstallConfig::default(),
+            config: InstallConfigPrepare::default(),
             progress: ProgressStatus::Pending,
         }
     }
@@ -31,55 +34,10 @@ pub enum ProgressStatus {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct InstallConfig {
-    locale: Option<String>,
-    timezone: Option<String>,
-    flaver: Option<String>,
-    download: Option<DownloadType>,
-    user: Option<User>,
-    rtc_as_localtime: bool,
-    hostname: Option<String>,
-    swapfile: SwapFile,
-    target_partition: Option<String>,
-    efi_partition: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct User {
-    username: String,
-    password: String,
-    root_password: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-enum SwapFile {
-    Automatic,
-    Custom(u64),
-    Disable,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 struct DkDevice {
     path: String,
     model: String,
     size: u64,
-}
-
-impl Default for InstallConfig {
-    fn default() -> Self {
-        Self {
-            locale: None,
-            timezone: None,
-            flaver: None,
-            download: None,
-            user: None,
-            rtc_as_localtime: false,
-            hostname: None,
-            swapfile: SwapFile::Automatic,
-            target_partition: None,
-            efi_partition: None,
-        }
-    }
 }
 
 #[dbus_interface(name = "io.aosc.Deploykit1")]
@@ -121,16 +79,10 @@ impl DeploykitServer {
                     .clone()
                     .unwrap_or_else(|| not_set_error(field)),
                 "rtc_as_localtime" => self.config.rtc_as_localtime.to_string(),
-                "target_partition" => self
-                    .config
-                    .target_partition
-                    .clone()
-                    .unwrap_or_else(|| not_set_error(field)),
-                "efi_partition" => self
-                    .config
-                    .efi_partition
-                    .clone()
-                    .unwrap_or_else(|| not_set_error(field)),
+                "target_partition" => serde_json::to_string(&self.config.target_partition.clone())
+                    .unwrap_or_else(|_| not_set_error(field)),
+                "efi_partition" => serde_json::to_string(&self.config.target_partition.clone())
+                    .unwrap_or_else(|_| not_set_error(field)),
                 _ => {
                     error!("Unknown field: {field}");
                     serde_json::to_string(&DeploykitError::unknown_field(field))
@@ -156,7 +108,7 @@ impl DeploykitServer {
     }
 
     fn reset_config(&mut self) -> String {
-        self.config = InstallConfig::default();
+        self.config = InstallConfigPrepare::default();
         "ok".to_string()
     }
 
@@ -178,9 +130,8 @@ impl DeploykitServer {
         let p = auto_create_partitions(path);
         let s = match p {
             Ok((efi, p)) => {
-                self.config.efi_partition =
-                    efi.and_then(|x| x.path).map(|x| x.display().to_string());
-                self.config.target_partition = p.path.map(|x| x.display().to_string());
+                self.config.efi_partition = efi;
+                self.config.target_partition = Some(p);
                 "ok".to_string()
             }
             Err(e) => {
@@ -195,7 +146,7 @@ impl DeploykitServer {
 }
 
 fn set_config_inner(
-    config: &mut InstallConfig,
+    config: &mut InstallConfigPrepare,
     field: &str,
     value: &str,
 ) -> Result<(), DeploykitError> {
@@ -246,11 +197,15 @@ fn set_config_inner(
             )),
         },
         "target_partition" => {
-            config.target_partition = Some(value.to_string());
+            let p = serde_json::from_str::<DkPartition>(value)
+                .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+            config.target_partition = Some(p);
             Ok(())
         }
         "efi_partition" => {
-            config.efi_partition = Some(value.to_string());
+            let p = serde_json::from_str::<DkPartition>(value)
+                .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+            config.efi_partition = Some(p);
             Ok(())
         }
         _ => {
