@@ -1,5 +1,6 @@
 use clap::Parser;
 use eyre::Result;
+use tracing::info;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -18,6 +19,8 @@ trait Deploykit {
     async fn get_config(&self, field: &str) -> zResult<String>;
     async fn get_progress(&self) -> zResult<String>;
     async fn reset_config(&self) -> zResult<String>;
+    async fn get_list_devices(&self) -> zResult<String>;
+    async fn auto_partition(&self, dev: &str) -> zResult<String>;
 }
 
 #[derive(Parser, Debug)]
@@ -97,6 +100,9 @@ async fn main() -> Result<()> {
             .to_string(),
         )
         .await?;
+
+    info!("Auto partitioning /dev/loop20...");
+    proxy.auto_partition("/dev/loop20").await?;
 
     println!("{}", proxy.get_config("").await?);
 

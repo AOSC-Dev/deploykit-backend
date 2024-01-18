@@ -1,3 +1,6 @@
+use std::path::Path;
+
+use disk::{devices::list_devices, partition::auto_create_partitions};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use zbus::dbus_interface;
@@ -30,13 +33,14 @@ pub enum ProgressStatus {
 struct InstallConfig {
     locale: Option<String>,
     timezone: Option<String>,
-    flavor: Option<String>,
+    flaver: Option<String>,
     mirror_url: Option<String>,
     user: Option<User>,
     rtc_as_localtime: bool,
     hostname: Option<String>,
     swapfile: SwapFile,
-    // TODO: add parttion option
+    target_partition: Option<String>,
+    efi_partition: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -47,10 +51,17 @@ struct User {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum SwapFile {
+enum SwapFile {
     Automatic,
     Custom(u64),
     Disable,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DkDevice {
+    path: String,
+    model: String,
+    size: u64,
 }
 
 impl Default for InstallConfig {
@@ -58,12 +69,14 @@ impl Default for InstallConfig {
         Self {
             locale: None,
             timezone: None,
-            flavor: None,
+            flaver: None,
             mirror_url: None,
             user: None,
             rtc_as_localtime: false,
             hostname: None,
             swapfile: SwapFile::Automatic,
+            target_partition: None,
+            efi_partition: None,
         }
     }
 }
@@ -94,7 +107,7 @@ impl DeploykitServer {
                     .unwrap_or_else(|| not_set_error(field)),
                 "flaver" => self
                     .config
-                    .flavor
+                    .flaver
                     .clone()
                     .unwrap_or_else(|| not_set_error(field)),
                 "mirror_url" => self
@@ -104,7 +117,22 @@ impl DeploykitServer {
                     .unwrap_or_else(|| not_set_error(field)),
                 "user" => serde_json::to_string(&self.config.user.clone())
                     .unwrap_or_else(|_| not_set_error(field)),
+                "hostname" => self
+                    .config
+                    .hostname
+                    .clone()
+                    .unwrap_or_else(|| not_set_error(field)),
                 "rtc_as_localtime" => self.config.rtc_as_localtime.to_string(),
+                "target_partition" => self
+                    .config
+                    .target_partition
+                    .clone()
+                    .unwrap_or_else(|| not_set_error(field)),
+                "efi_partition" => self
+                    .config
+                    .efi_partition
+                    .clone()
+                    .unwrap_or_else(|| not_set_error(field)),
                 _ => {
                     error!("Unknown field: {field}");
                     serde_json::to_string(&DeploykitError::unknown_field(field))
@@ -133,6 +161,39 @@ impl DeploykitServer {
         self.config = InstallConfig::default();
         "ok".to_string()
     }
+
+    fn get_list_devices(&self) -> String {
+        let mut res = vec![];
+        for i in list_devices() {
+            res.push(DkDevice {
+                path: i.path().display().to_string(),
+                model: i.model().to_string(),
+                size: i.sector_size() * i.length(),
+            });
+        }
+
+        serde_json::to_string(&res).unwrap_or_else(|_| "Failed to serialize".to_string())
+    }
+
+    fn auto_partition(&mut self, dev: &str) -> String {
+        let path = Path::new(dev);
+        let p = auto_create_partitions(path);
+        let s = match p {
+            Ok((efi, p)) => {
+                self.config.efi_partition =
+                    efi.and_then(|x| x.path).map(|x| x.display().to_string());
+                self.config.target_partition = p.path.map(|x| x.display().to_string());
+                "ok".to_string()
+            }
+            Err(e) => {
+                error!("Failed to auto partition: {e}");
+                serde_json::to_string(&DeploykitError::AutoPartition(e.to_string()))
+                    .unwrap_or_else(|_| "Failed to serialize".to_string())
+            }
+        };
+
+        s
+    }
 }
 
 fn set_config_inner(
@@ -150,7 +211,7 @@ fn set_config_inner(
             Ok(())
         }
         "flaver" => {
-            config.flavor = Some(value.to_string());
+            config.flaver = Some(value.to_string());
             Ok(())
         }
         "mirror_url" => {
@@ -182,6 +243,14 @@ fn set_config_inner(
                 value.to_string(),
             )),
         },
+        "target_partition" => {
+            config.target_partition = Some(value.to_string());
+            Ok(())
+        }
+        "efi_partition" => {
+            config.efi_partition = Some(value.to_string());
+            Ok(())
+        }
         _ => {
             error!("Unknown field: {field}");
             Err(DeploykitError::unknown_field(field))

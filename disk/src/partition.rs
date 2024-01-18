@@ -228,7 +228,9 @@ fn get_partition_table_type(device_path: &Path) -> Result<String, PartitionError
 }
 
 #[cfg(debug_assertions)]
-pub fn auto_create_partitions(dev: &Path) -> Result<DkPartition, PartitionError> {
+pub fn auto_create_partitions(
+    dev: &Path,
+) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
     let mut device = libparted::Device::new(dev).map_err(|e| PartitionError::OpenDevice {
         path: dev.display().to_string(),
         err: e,
@@ -339,7 +341,7 @@ pub fn auto_create_partitions(dev: &Path) -> Result<DkPartition, PartitionError>
 
     format_partition(&p)?;
 
-    if is_efi {
+    let efi = if is_efi {
         let start_sector = length - (partition_table_end_size + efi_size) / sector_size + 1;
         let efi = &PartitionCreate {
             path: dev.to_path_buf(),
@@ -368,14 +370,17 @@ pub fn auto_create_partitions(dev: &Path) -> Result<DkPartition, PartitionError>
         };
 
         format_partition(&p)?;
-    }
+        Some(p)
+    } else {
+        None
+    };
 
     device.sync().map_err(|e| PartitionError::SyncDevice {
         path: dev.display().to_string(),
         err: e,
     })?;
 
-    Ok(p)
+    Ok((efi, p))
 }
 
 pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
@@ -416,7 +421,7 @@ pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
 }
 
 #[cfg(not(debug_assertions))]
-pub fn auto_create_partitions(dev: &Path) -> Result<DkPartition, PartitionError> {
+pub fn auto_create_partitions(dev: &Path) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
     let mut device = Device::new(dev).map_err(|e| PartitionError::open_device(dev, e))?;
 
     let device = &mut device as *mut Device;
@@ -548,7 +553,7 @@ pub fn auto_create_partitions(dev: &Path) -> Result<DkPartition, PartitionError>
         }
     }
 
-    if is_efi {
+    let efi = if is_efi {
         let part_efi = disk
             .get_partition_by_sector(2048)
             .ok_or_else(|| PartitionError::FindSector(2048))?;
@@ -568,7 +573,11 @@ pub fn auto_create_partitions(dev: &Path) -> Result<DkPartition, PartitionError>
         };
 
         format_partition(&p)?;
-    }
+
+        Some(p)
+    } else {
+        None
+    };
 
     let p = last.ok_or_else(|| PartitionError::CreatePartition {
         path: dev.display().to_string(),
@@ -584,7 +593,7 @@ pub fn auto_create_partitions(dev: &Path) -> Result<DkPartition, PartitionError>
 
     format_partition(&p)?;
 
-    Ok(p)
+    Ok((efi, p))
 }
 
 #[cfg(not(debug_assertions))]
