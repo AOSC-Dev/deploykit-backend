@@ -61,31 +61,3 @@ pub fn device_is_empty(dev: &Path) -> Result<bool, PartitionError> {
 
     Ok(parts.all(|x| x.get_path().is_none()))
 }
-
-pub fn create_parition_table(dev: &Path) -> Result<(), PartitionError> {
-    let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
-        path: dev.display().to_string(),
-        err: e,
-    })?;
-
-    let part_table = if is_efi_booted() { "gpt" } else { "msdos" };
-
-    let mut disk =
-        Disk::new_fresh(&mut device, DiskType::get(part_table).unwrap()).map_err(|e| {
-            PartitionError::NewPartitionTable {
-                path: dev.display().to_string(),
-                err: e,
-            }
-        })?;
-
-    disk.commit().map_err(|e| PartitionError::CommitChanges {
-        path: dev.display().to_string(),
-        err: e,
-    })?;
-
-    Ok(())
-}
-
-pub fn is_efi_booted() -> bool {
-    Path::new("/sys/firmware/efi").exists()
-}

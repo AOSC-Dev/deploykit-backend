@@ -11,6 +11,7 @@ mod chroot;
 mod ssh;
 mod dracut;
 mod hostname;
+mod download;
 
 #[derive(Debug, Error)]
 pub enum InstallError {
@@ -42,6 +43,12 @@ pub enum InstallError {
     PasswdIllegal(PasswdIllegalKind),
     #[error("Failed to generate /etc/fstab: {0:?}")]
     GenFstab(GenFstabErrorKind),
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+    #[error("Failed to download squashfs, checksum mismatch")]
+    ChecksumMisMatch,
+    #[error("Failed to create tokio runtime: {0}")]
+    CreateTokioRuntime(#[from] std::io::Error),
 }
 
 #[derive(Debug)]

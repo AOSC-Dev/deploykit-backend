@@ -16,3 +16,6 @@ tracing = "0.1"
 disk = { path = "../disk" }
 libc = "0.2"
 fstab-generate = "0.1"
+reqwest = "0.11"
+tokio = { version = "1.35", features = ["rt-multi-thread"] }
+sha2 = "0.10"
