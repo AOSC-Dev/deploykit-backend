@@ -1104,6 +1104,7 @@ dependencies = [
  "libc",
  "reqwest",
  "rustix 0.38.30",
+ "serde",
  "sha2",
  "sysinfo",
  "tar",

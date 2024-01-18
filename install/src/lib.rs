@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod extract;
@@ -48,7 +51,7 @@ pub enum InstallError {
     #[error("Failed to download squashfs, checksum mismatch")]
     ChecksumMisMatch,
     #[error("Failed to create tokio runtime: {0}")]
-    CreateTokioRuntime(#[from] std::io::Error),
+    CreateTokioRuntime(std::io::Error),
 }
 
 #[derive(Debug)]
@@ -67,3 +70,19 @@ pub enum GenFstabErrorKind {
     UnsupportedFileSystem(String),
     UUID,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum DownloadType {
+    Http {
+        url: String,
+        hash: String,
+        to_path: PathBuf,
+    },
+    File(PathBuf),
+}
+
+// #[test]
+// fn test() {
+//     let a = DownloadType::Http { url: "a".to_string(), hash: "b".to_string(), to_path: PathBuf::from("c") };
+//     dbg!(serde_json::to_string(&a));
+// }

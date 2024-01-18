@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use disk::{devices::list_devices, partition::auto_create_partitions};
+use install::DownloadType;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use zbus::dbus_interface;
@@ -34,7 +35,7 @@ struct InstallConfig {
     locale: Option<String>,
     timezone: Option<String>,
     flaver: Option<String>,
-    mirror_url: Option<String>,
+    download: Option<DownloadType>,
     user: Option<User>,
     rtc_as_localtime: bool,
     hostname: Option<String>,
@@ -70,7 +71,7 @@ impl Default for InstallConfig {
             locale: None,
             timezone: None,
             flaver: None,
-            mirror_url: None,
+            download: None,
             user: None,
             rtc_as_localtime: false,
             hostname: None,
@@ -110,11 +111,8 @@ impl DeploykitServer {
                     .flaver
                     .clone()
                     .unwrap_or_else(|| not_set_error(field)),
-                "mirror_url" => self
-                    .config
-                    .mirror_url
-                    .clone()
-                    .unwrap_or_else(|| not_set_error(field)),
+                "download" => serde_json::to_string(&self.config.download)
+                    .unwrap_or_else(|_| not_set_error(field)),
                 "user" => serde_json::to_string(&self.config.user.clone())
                     .unwrap_or_else(|_| not_set_error(field)),
                 "hostname" => self
@@ -214,8 +212,12 @@ fn set_config_inner(
             config.flaver = Some(value.to_string());
             Ok(())
         }
-        "mirror_url" => {
-            config.mirror_url = Some(value.to_string());
+        "download" => {
+            let download_type = serde_json::from_str::<DownloadType>(value)
+                .map_err(|_| DeploykitError::SetValue("download".to_string(), value.to_string()))?;
+
+            config.download = Some(download_type);
+
             Ok(())
         }
         "user" => {

@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use fancy_regex::Regex;
-use libparted::{Device, Disk, DiskType};
+use libparted::{Device, Disk};
 use tracing::info;
 
 use crate::PartitionError;

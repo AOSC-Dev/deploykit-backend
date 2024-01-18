@@ -6,16 +6,7 @@ use sha2::Digest;
 use sha2::Sha256;
 use tokio::io::AsyncWriteExt;
 
-use crate::InstallError;
-
-pub enum DownloadType {
-    Http {
-        url: String,
-        hash: String,
-        to_path: PathBuf,
-    },
-    File(PathBuf),
-}
+use crate::{DownloadType, InstallError};
 
 pub fn download_file<F: Fn(usize)>(
     download_type: &DownloadType,
@@ -26,7 +17,10 @@ pub fn download_file<F: Fn(usize)>(
             http_download_file(url, to_path, hash, f)?;
             Ok(to_path.clone())
         }
-        DownloadType::File(path) => Ok(path.to_path_buf()),
+        DownloadType::File(path) => {
+            f(100);
+            Ok(path.to_path_buf())
+        }
     }
 }
 
@@ -38,7 +32,8 @@ fn http_download_file<F: Fn(usize)>(
 ) -> Result<(), InstallError> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
-        .build()?;
+        .build()
+        .map_err(InstallError::CreateTokioRuntime)?;
 
     runtime.block_on(async { http_download_file_inner(url, path, hash, f).await })?;
 
@@ -68,7 +63,7 @@ async fn http_download_file_inner<F: Fn(usize)>(
     let total_size = total_size
         .to_str()
         .ok()
-        .and_then(|x| x.parse::<u64>().ok())
+        .and_then(|x| x.parse::<usize>().ok())
         .unwrap_or(1);
 
     let mut file = tokio::fs::File::create(path)
@@ -88,7 +83,7 @@ async fn http_download_file_inner<F: Fn(usize)>(
 
     while let Some(chunk) = resp.chunk().await? {
         file.write_all(&chunk).await.unwrap();
-        f(chunk.len() / total_size as usize);
+        f(chunk.len() / total_size);
         v.update(&chunk);
     }
 

@@ -29,8 +29,8 @@ struct Args {
     #[clap(long, default_value = "Base")]
     flaver: String,
     /// Set URL for download source
-    #[clap(long, default_value = "https://repo.aosc.io/aosc-os")]
-    mirror_url: String,
+    // #[clap(long, default_value = "https://repo.aosc.io/aosc-os")]
+    // mirror_url: String,
     /// Set name of the default user
     #[clap(long)]
     user: String,
@@ -56,7 +56,6 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let Args {
         flaver,
-        mirror_url,
         user,
         password,
         hostname,
@@ -82,7 +81,13 @@ async fn main() -> Result<()> {
     let proxy = DeploykitProxy::new(&connection).await?;
 
     proxy.set_config("flaver", &flaver).await?;
-    proxy.set_config("mirror_url", &mirror_url).await?;
+    proxy.set_config("download", &serde_json::json!({
+        "Http": {
+            "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
+            "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
+            "to_path": "/tmp/squashfs"
+        }
+    }).to_string()).await?;
     proxy.set_config("timezone", &timezone).await?;
     proxy.set_config("locale", &locale).await?;
     proxy
