@@ -1,5 +1,5 @@
 use clap::Parser;
-use eyre::Result;
+use eyre::{bail, Result};
 use tracing::info;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt;
@@ -102,7 +102,11 @@ async fn main() -> Result<()> {
         .await?;
 
     info!("Auto partitioning /dev/loop20...");
-    proxy.auto_partition("/dev/loop20").await?;
+    let result = proxy.auto_partition("/dev/loop20").await?;
+
+    if result != "ok" {
+        bail!("Failed to auto partition /dev/loop20: {}", result);
+    }
 
     println!("{}", proxy.get_config("").await?);
 
