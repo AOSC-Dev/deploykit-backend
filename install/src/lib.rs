@@ -1,5 +1,7 @@
 use std::{
-    fs, path::{Path, PathBuf}, sync::Arc
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use disk::{
@@ -14,6 +16,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::info;
 
+use crate::{
+    chroot::{dive_into_guest, escape_chroot, get_dir_fd}, dracut::execute_dracut, grub::execute_grub_install, hostname::set_hostname, locale::set_locale, mount::{remove_bind_mounts, umount_root_path}, ssh::gen_ssh_key, user::add_new_user, zoneinfo::set_zoneinfo
+};
+
 mod chroot;
 mod download;
 mod dracut;
@@ -26,6 +32,8 @@ mod ssh;
 mod swap;
 mod user;
 mod utils;
+mod zoneinfo;
+mod locale;
 
 #[derive(Debug, Error)]
 pub enum InstallError {
@@ -232,11 +240,16 @@ impl InstallConfig {
 
         self.mount_partitions(&tmp_mount_path)?;
 
+        progress(50.0);
+
+        // TODO: swap
+
         let progress_arc = Arc::new(progress);
         let velocity_arc = Arc::new(velocity);
         let progress = progress_arc.clone();
         let velocity = velocity_arc.clone();
-        let (squashfs_path, total_size) = download_file(&self.download, progress_arc, velocity_arc)?;
+        let (squashfs_path, total_size) =
+            download_file(&self.download, progress_arc, velocity_arc)?;
 
         step(3);
         progress(0.0);
@@ -259,6 +272,74 @@ impl InstallConfig {
 
         step(5);
         progress(0.0);
+
+        info!("Chroot to installed system ...");
+        let owned_root_fd = get_dir_fd(Path::new("/"))?;
+        dive_into_guest(&tmp_mount_path)?;
+
+        info!("Running dracut ...");
+        execute_dracut()?;
+
+        progress(100.0);
+
+        step(6);
+        progress(0.0);
+
+        self.install_grub()?;
+
+        progress(100.0);
+
+        step(7);
+        progress(0.0);
+    
+        info!("Generating SSH key ...");
+        gen_ssh_key()?;
+
+        progress(100.0);
+
+        step(8);
+        progress(0.0);
+
+        // TODO: swap
+        progress(25.0);
+
+        info!("Setting timezone as {}", self.timezone);
+        set_zoneinfo(&self.timezone)?;
+        progress(50.0);
+
+        info!("Setting hostname as {}", self.hostname);
+        set_hostname(&self.hostname)?;
+        progress(75.0);
+
+        info!("Setting User ...");
+        // TODO: fummname
+        add_new_user(&self.user.username, &self.user.password)?;
+        progress(80.0);
+        
+        info!("Setting locale ...");
+        set_locale(&self.local)?;
+        progress(90.0);
+
+        info!("Escape chroot ...");
+        escape_chroot(owned_root_fd)?;
+
+        info!("Removing bind mounts ...");
+        remove_bind_mounts(&tmp_mount_path)?;
+
+        info!("Unmounting filesystems...");
+        umount_root_path(&tmp_mount_path)?; 
+
+        Ok(())
+    }
+
+    fn install_grub(&self) -> Result<(), InstallError> {
+        if self.efi_partition.is_some() {
+            info!("Installing grub to UEFI partition ...");
+            execute_grub_install(None)?;
+        } else {
+            info!("Installing grub to MBR partition ...");
+            execute_grub_install(Some(self.target_partition.parent_path.as_ref().unwrap()))?;
+        }
 
         Ok(())
     }

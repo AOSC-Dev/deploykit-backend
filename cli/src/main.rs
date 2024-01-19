@@ -127,10 +127,14 @@ async fn main() -> Result<()> {
         loop {
             match proxy_clone.get_progress().await {
                 Ok(progress) => {
+                    if progress == "Done" {
+                        break;
+                    }
                     println!("Progress: {}", progress);
                 }
                 Err(e) => {
                     eprintln!("Error: {}", e);
+                    break;
                 }
             }
             sleep(Duration::from_millis(300)).await;

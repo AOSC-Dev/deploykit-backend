@@ -1,6 +1,11 @@
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::{
+    io::{self, Read, Seek, SeekFrom, Write},
+    process::{Command, Stdio},
+};
 
-use crate::{InstallError, PasswdIllegalKind};
+use tracing::info;
+
+use crate::{utils::run_command, InstallError, PasswdIllegalKind};
 
 /// Sets Fullname
 /// Must be used in a chroot context
@@ -151,6 +156,49 @@ pub fn is_acceptable_username(username: &str) -> bool {
     }
 
     true
+}
+
+/// Adds a new normal user to the guest environment
+/// Must be used in a chroot context
+pub fn add_new_user(name: &str, password: &str) -> Result<(), InstallError> {
+    run_command("useradd", ["-m", "-s", "/bin/bash", name])?;
+    run_command("usermod", ["-aG", "audio,cdrom,video,wheel,plugdev", name])?;
+
+    chpasswd(name, password)?;
+
+    Ok(())
+}
+
+pub fn chpasswd(name: &str, password: &str) -> Result<(), InstallError> {
+    info!("Running chpasswd ...");
+    let command = Command::new("chpasswd")
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|e| InstallError::RunCommand {
+            command: "chpasswd".to_string(),
+            err: e,
+        })?;
+
+    let mut stdin = command.stdin.ok_or(InstallError::RunCommand {
+        command: "chpasswd".to_string(),
+        err: io::Error::new(io::ErrorKind::NotFound, "stdin is None"),
+    })?;
+
+    stdin
+        .write_all(format!("{name}:{password}\n").as_bytes())
+        .map_err(|e| InstallError::RunCommand {
+            command: "chpasswd".to_string(),
+            err: e,
+        })?;
+
+    stdin.flush().map_err(|e| InstallError::RunCommand {
+        command: "chpasswd".to_string(),
+        err: e,
+    })?;
+
+    info!("Running chpasswd successfully");
+
+    Ok(())
 }
 
 #[test]

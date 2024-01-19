@@ -24,12 +24,18 @@ where
     let limit_thread = if total_memory <= 2 { Some(1) } else { None };
 
     let mut now = Instant::now();
+    let mut v_download_len = 0.0;
+
     unsquashfs_wrapper::extract(archive, path, limit_thread, move |count| {
-        if now.elapsed().as_secs() >= 1 {
+        let elapsed = now.elapsed().as_secs();
+        if elapsed >= 1 {
             now = Instant::now();
-            velocity((((file_size / 1024.0) * count as f64 / 100.0) / 1.0) as usize)
+            velocity(((v_download_len / 1024.0) / elapsed as f64) as usize);
+            v_download_len = 0.0;
         }
         progress(count as f64);
+        v_download_len += file_size * count as f64 / 100.0;
+        dbg!(v_download_len);
     })
     .map_err(InstallError::Unpack)?;
 

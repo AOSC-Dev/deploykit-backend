@@ -118,16 +118,19 @@ where
     let mut v = Sha256::new();
 
     let mut now = Instant::now();
+    let mut v_download_len = 0;
     let mut download_len = 0;
 
     while let Some(chunk) = resp.chunk().await? {
         if now.elapsed().as_secs() >= 1 {
             now = Instant::now();
-            velocity((download_len / 1024) / 1);
+            velocity((v_download_len / 1024) / 1);
+            v_download_len = 0;
         }
         file.write_all(&chunk).await.unwrap();
-        progress(chunk.len() as f64 / total_size as f64);
+        progress(download_len as f64 / total_size as f64);
         v.update(&chunk);
+        v_download_len += chunk.len();
         download_len += chunk.len();
     }
 
