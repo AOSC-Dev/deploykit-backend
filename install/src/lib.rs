@@ -1,6 +1,5 @@
 use std::{
-    fs,
-    path::{Path, PathBuf},
+    fs, path::{Path, PathBuf}, sync::Arc
 };
 
 use disk::{
@@ -13,7 +12,7 @@ use genfstab::genfstab_to_file;
 use mount::mount_root_path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use unsquashfs_wrapper::extract;
+use tracing::info;
 
 mod chroot;
 mod download;
@@ -69,6 +68,8 @@ pub enum InstallError {
     PartitionValueIsNone(PartitionNotSetValue),
     #[error("Local file {0:?} is not found")]
     LocalFileNotFound(String),
+    #[error("Download path is not set")]
+    DownloadPathIsNotSet,
 }
 
 #[derive(Debug)]
@@ -110,7 +111,7 @@ pub enum DownloadType {
     Http {
         url: String,
         hash: String,
-        to_path: PathBuf,
+        to_path: Option<PathBuf>,
     },
     File(PathBuf),
 }
@@ -164,7 +165,7 @@ pub struct InstallConfig {
     local: String,
     timezone: String,
     flaver: String,
-    download: DownloadType,
+    pub download: DownloadType,
     user: User,
     rtc_as_localtime: bool,
     hostname: String,
@@ -216,42 +217,48 @@ impl InstallConfig {
     ) -> Result<(), InstallError>
     where
         F: Fn(u8),
-        F2: Fn(usize),
-        F3: Fn(usize),
+        F2: Fn(f64) + Send + Sync + 'static,
+        F3: Fn(usize) + Send + Sync + 'static,
     {
         step(1);
-        progress(0);
+        progress(0.0);
 
         self.format_partitions()?;
 
-        progress(100);
+        progress(100.0);
 
         step(2);
-        progress(0);
+        progress(0.0);
 
         self.mount_partitions(&tmp_mount_path)?;
-        let (squashfs_path, total_size) = download_file(&self.download, &progress, &velocity)?;
+
+        let progress_arc = Arc::new(progress);
+        let velocity_arc = Arc::new(velocity);
+        let progress = progress_arc.clone();
+        let velocity = velocity_arc.clone();
+        let (squashfs_path, total_size) = download_file(&self.download, progress_arc, velocity_arc)?;
 
         step(3);
-        progress(0);
+        progress(0.0);
 
         extract_squashfs(
             total_size as f64,
             squashfs_path,
             tmp_mount_path.to_path_buf(),
-            &progress,
-            &velocity,
+            &*progress,
+            &*velocity,
         )?;
 
         step(4);
-        progress(0);
+        progress(0.0);
 
+        info!("Generate /etc/fstab");
         self.genfatab(&tmp_mount_path)?;
 
-        progress(100);
+        progress(100.0);
 
         step(5);
-        progress(0);
+        progress(0.0);
 
         Ok(())
     }

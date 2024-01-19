@@ -4,7 +4,7 @@ use std::{
         mpsc::{self, Sender},
         Arc, Mutex,
     },
-    thread,
+    thread::{self, sleep, JoinHandle},
 };
 
 use disk::{
@@ -22,13 +22,42 @@ use crate::error::DeploykitError;
 pub struct DeploykitServer {
     config: InstallConfigPrepare,
     progress: Arc<Mutex<ProgressStatus>>,
+    _progress_handle: JoinHandle<()>,
+    step_tx: Sender<u8>,
+    progress_tx: Sender<f64>,
+    v_tx: Sender<usize>,
+    install_thread: Option<JoinHandle<Result<(), DeploykitError>>>,
 }
 
 impl Default for DeploykitServer {
     fn default() -> Self {
+        let ps = Arc::new(Mutex::new(ProgressStatus::Pending));
+        let (step_tx, step_rx) = mpsc::channel();
+        let (progress_tx, progress_rx): (Sender<f64>, _) = mpsc::channel();
+        let (v_tx, v_rx) = mpsc::channel();
         Self {
             config: InstallConfigPrepare::default(),
-            progress: Arc::new(Mutex::new(ProgressStatus::Pending)),
+            progress: ps.clone(),
+            _progress_handle: thread::spawn(move || loop {
+                let mut ps = ps.lock().unwrap();
+                if let Ok(v) = step_rx.try_recv() {
+                    ps.change_step(v);
+                }
+
+                if let Ok(v) = progress_rx.try_recv() {
+                    ps.change_progress(v);
+                }
+
+                if let Ok(v) = v_rx.try_recv() {
+                    ps.change_velocity(v);
+                }
+
+                drop(ps);
+            }),
+            step_tx,
+            progress_tx,
+            v_tx,
+            install_thread: None,
         }
     }
 }
@@ -36,7 +65,7 @@ impl Default for DeploykitServer {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProgressStatus {
     Pending,
-    Working(u8, usize, usize),
+    Working(u8, f64, usize),
     Done,
 }
 
@@ -44,13 +73,13 @@ impl ProgressStatus {
     fn change_step(&mut self, step: u8) {
         match self {
             ProgressStatus::Working(_, progress, v) => {
-               *self = ProgressStatus::Working(step, *progress, *v);
+                *self = ProgressStatus::Working(step, *progress, *v);
             }
             _ => {}
         }
     }
 
-    fn change_progress(&mut self, progress: usize) {
+    fn change_progress(&mut self, progress: f64) {
         match self {
             ProgressStatus::Working(step, _, v) => {
                 *self = ProgressStatus::Working(*step, progress, *v);
@@ -184,38 +213,21 @@ impl DeploykitServer {
     fn start_install(&mut self) -> String {
         {
             let mut ps = self.progress.lock().unwrap();
-            *ps = ProgressStatus::Working(0, 0, 0);
+            *ps = ProgressStatus::Working(0, 0.0, 0);
         }
 
-        let (step_tx, step_rx) = mpsc::channel();
-        let (progress_tx, progress_rx) = mpsc::channel();
-        let (v_tx, v_rx) = mpsc::channel();
-
-        {
-            let ps = self.progress.clone();
-            thread::spawn(move || {
-                let mut ps = ps.lock().unwrap();
-                if let Ok(v) = step_rx.try_recv() {
-                    ps.change_step(v);
-                }
-    
-                if let Ok(v) = progress_rx.try_recv() {
-                    ps.change_progress(v);
-                }
-    
-                if let Ok(v) = v_rx.try_recv() {
-                    ps.change_velocity(v);
-                }
-            });
-        }
-
-        if let Err(e) = start_install_inner(self.config.clone(), step_tx, progress_tx, v_tx) {
-            return serde_json::to_string(&e).unwrap_or_else(|_| "Failed to serialize".to_string());
-        }
-
-        {
-            let mut ps = self.progress.lock().unwrap();
-            *ps = ProgressStatus::Done;
+        match start_install_inner(
+            self.config.clone(),
+            self.step_tx.clone(),
+            self.progress_tx.clone(),
+            self.v_tx.clone(),
+            self.progress.clone(),
+        ) {
+            Ok(j) => self.install_thread = Some(j),
+            Err(e) => {
+                return serde_json::to_string(&e)
+                    .unwrap_or_else(|_| "Failed to serialize".to_string());
+            }
         }
 
         "ok".to_string()
@@ -301,10 +313,11 @@ fn not_set_error(field: &str) -> String {
 fn start_install_inner(
     config: InstallConfigPrepare,
     step_tx: Sender<u8>,
-    progress_tx: Sender<usize>,
+    progress_tx: Sender<f64>,
     v_tx: Sender<usize>,
-) -> Result<(), DeploykitError> {
-    let config =
+    ps: Arc<Mutex<ProgressStatus>>,
+) -> Result<JoinHandle<Result<(), DeploykitError>>, DeploykitError> {
+    let mut config =
         InstallConfig::try_from(config).map_err(|e| DeploykitError::Install(e.to_string()))?;
 
     info!("Starting install");
@@ -314,18 +327,46 @@ fn start_install_inner(
         .into_path()
         .to_path_buf();
 
-    config
-        .start_install(
-            |step| {
-                step_tx.send(step).unwrap();
-            },
-            |progress| {
-                progress_tx.send(progress).unwrap();
-            },
-            |v| v_tx.send(v).unwrap(),
-            temp_dir,
-        )
-        .map_err(|e| DeploykitError::Install(e.to_string()))?;
+    let tmp_dir_clone = temp_dir.clone();
 
-    Ok(())
+    if let DownloadType::Http { to_path, .. } = &mut config.download {
+        *to_path = Some(tmp_dir_clone.join("squashfs"));
+    }
+
+    dbg!(&config.download);
+
+    let t = thread::spawn(move || {
+        let t = thread::spawn(move || {
+            config
+                .start_install(
+                    |step| {
+                        step_tx.send(step).unwrap();
+                    },
+                    move |progress| {
+                        progress_tx.send(progress).unwrap();
+                    },
+                    move |v| v_tx.send(v).unwrap(),
+                    temp_dir,
+                )
+                .map_err(|e| DeploykitError::Install(e.to_string()))
+        });
+
+        let res = t.join().unwrap();
+
+        match res {
+            Ok(()) => {
+                info!("Install finished");
+                let mut ps = ps.lock().unwrap();
+                *ps = ProgressStatus::Done;
+                drop(ps);
+                res
+            },
+            Err(e) => {
+                error!("Install failed: {e}");
+                Err(e)
+            }
+        }
+    });
+
+    Ok(t)
 }

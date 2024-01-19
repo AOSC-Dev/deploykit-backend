@@ -1,5 +1,9 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use clap::Parser;
 use eyre::{bail, Result};
+use tokio::time::sleep;
 use tracing::info;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt;
@@ -21,6 +25,7 @@ trait Deploykit {
     async fn reset_config(&self) -> zResult<String>;
     async fn get_list_devices(&self) -> zResult<String>;
     async fn auto_partition(&self, dev: &str) -> zResult<String>;
+    async fn start_install(&self) -> zResult<String>;
 }
 
 #[derive(Parser, Debug)]
@@ -82,11 +87,11 @@ async fn main() -> Result<()> {
 
     proxy.set_config("flaver", &flaver).await?;
     proxy.set_config("download", &serde_json::json!({
-        "Http": {
-            "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
-            "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
-            "to_path": "/tmp/squashfs"
-        }
+        // "Http": {
+        //     "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
+        //     "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
+        // }
+        "File": "/home/saki/squashfs"
     }).to_string()).await?;
     proxy.set_config("timezone", &timezone).await?;
     proxy.set_config("locale", &locale).await?;
@@ -115,8 +120,27 @@ async fn main() -> Result<()> {
 
     println!("{}", proxy.get_config("").await?);
 
-    proxy.reset_config().await?;
-    println!("{}", proxy.get_config("").await?);
+    let proxy = Arc::new(proxy);
+    let proxy_clone = proxy.clone();
+
+    let t = tokio::spawn(async move {
+        loop {
+            match proxy_clone.get_progress().await {
+                Ok(progress) => {
+                    println!("Progress: {}", progress);
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                }
+            }
+            sleep(Duration::from_millis(300)).await;
+        }
+    });
+
+    let res = proxy.start_install().await?;
+    println!("{res}");
+
+    t.await?;
 
     Ok(())
 }

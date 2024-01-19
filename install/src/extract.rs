@@ -13,7 +13,7 @@ pub(crate) fn extract_squashfs<F, F2, P>(
     velocity: F2,
 ) -> Result<(), InstallError>
 where
-    F: Fn(usize),
+    F: Fn(f64),
     F2: Fn(usize),
     P: AsRef<Path>,
 {
@@ -29,7 +29,7 @@ where
             now = Instant::now();
             velocity((((file_size / 1024.0) * count as f64 / 100.0) / 1.0) as usize)
         }
-        progress(count as usize);
+        progress(count as f64);
     })
     .map_err(InstallError::Unpack)?;
 

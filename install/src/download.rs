@@ -1,6 +1,7 @@
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
+use std::{fs, thread};
 
 use reqwest::header::HeaderValue;
 use reqwest::{header::CONTENT_LENGTH, Client};
@@ -10,23 +11,30 @@ use tokio::io::AsyncWriteExt;
 
 use crate::{DownloadType, InstallError};
 
-pub fn download_file<F: Fn(usize), F2: Fn(usize)>(
+pub fn download_file<F, F2>(
     download_type: &DownloadType,
-    progress: F,
-    velocity: F2,
-) -> Result<(PathBuf, usize), InstallError> {
+    progress: Arc<F>,
+    velocity: Arc<F2>,
+) -> Result<(PathBuf, usize), InstallError>
+where
+    F: Fn(f64) + Sync + Send + 'static,
+    F2: Fn(usize) + Send + Sync + 'static,
+{
     match download_type {
-        DownloadType::Http { url, hash, to_path } => Ok((
-            to_path.clone(),
-            http_download_file(url, to_path, hash, progress, velocity)?,
-        )),
+        DownloadType::Http { url, hash, to_path } => {
+            let to_path = to_path.as_ref().ok_or(InstallError::DownloadPathIsNotSet)?;
+            Ok((
+                to_path.clone(),
+                http_download_file(url, &to_path, hash, progress, velocity)?,
+            ))
+        }
         DownloadType::File(path) => {
             if !path.exists() {
                 return Err(InstallError::LocalFileNotFound(path.display().to_string()));
             }
 
             velocity(0);
-            progress(100);
+            progress(100.0);
 
             let total = fs::metadata(path).map(|x| x.len()).unwrap_or(1) as usize;
 
@@ -35,32 +43,49 @@ pub fn download_file<F: Fn(usize), F2: Fn(usize)>(
     }
 }
 
-fn http_download_file<F: Fn(usize), F2: Fn(usize)>(
+fn http_download_file<F, F2>(
     url: &str,
     path: &Path,
     hash: &str,
-    progress: F,
-    velocity: F2,
-) -> Result<usize, InstallError> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(InstallError::CreateTokioRuntime)?;
+    progress: Arc<F>,
+    velocity: Arc<F2>,
+) -> Result<usize, InstallError>
+where
+    F: Fn(f64) + Sync + Send + 'static,
+    F2: Fn(usize) + Send + Sync + 'static,
+{
+    let url = url.to_string();
+    let hash = hash.to_string();
+    let path = path.to_path_buf();
+    thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
 
-    runtime.block_on(async { http_download_file_inner(url, path, hash, progress, velocity).await })
+        runtime.block_on(async move {
+            http_download_file_inner(url, path, hash, progress, velocity).await
+        })
+    })
+    .join()
+    .unwrap()
 }
 
-async fn http_download_file_inner<F: Fn(usize), F2: Fn(usize)>(
-    url: &str,
-    path: &Path,
-    hash: &str,
-    progress: F,
-    velocity: F2,
-) -> Result<usize, InstallError> {
-    let client = Client::builder().user_agent("oma").build()?;
+async fn http_download_file_inner<F, F2>(
+    url: String,
+    path: PathBuf,
+    hash: String,
+    progress: Arc<F>,
+    velocity: Arc<F2>,
+) -> Result<usize, InstallError>
+where
+    F: Fn(f64) + Sync + Send,
+    F2: Fn(usize) + Send + Sync,
+{
+    let client = Client::builder().user_agent("deploykit").build()?;
 
     let head = client
-        .head(url)
+        .head(&url)
         .send()
         .await
         .and_then(|x| x.error_for_status())?;
@@ -77,7 +102,7 @@ async fn http_download_file_inner<F: Fn(usize), F2: Fn(usize)>(
         .and_then(|x| x.parse::<usize>().ok())
         .unwrap_or(1);
 
-    let mut file = tokio::fs::File::create(path)
+    let mut file = tokio::fs::File::create(&path)
         .await
         .map_err(|e| InstallError::OperateFile {
             path: path.display().to_string(),
@@ -101,16 +126,22 @@ async fn http_download_file_inner<F: Fn(usize), F2: Fn(usize)>(
             velocity((download_len / 1024) / 1);
         }
         file.write_all(&chunk).await.unwrap();
-        progress(chunk.len() / total_size);
+        progress(chunk.len() as f64 / total_size as f64);
         v.update(&chunk);
         download_len += chunk.len();
     }
 
-    let download_hash = v.finalize().to_vec();
+    tokio::task::spawn_blocking(move || {
+        let download_hash = v.finalize().to_vec();
 
-    if download_hash != hash.as_bytes() {
-        return Err(InstallError::ChecksumMisMatch);
-    }
+        if hex::encode(download_hash) != hash {
+            return Err(InstallError::ChecksumMisMatch);
+        }
+
+        Ok(())
+    })
+    .await
+    .unwrap()?;
 
     file.shutdown()
         .await

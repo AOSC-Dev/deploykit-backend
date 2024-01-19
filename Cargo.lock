@@ -1103,6 +1103,7 @@ version = "0.1.0"
 dependencies = [
  "disk",
  "fstab-generate",
+ "hex",
  "libc",
  "reqwest",
  "rustix 0.38.30",
