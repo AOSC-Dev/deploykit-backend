@@ -1,8 +1,19 @@
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
-use disk::partition::DkPartition;
+use disk::{
+    partition::{format_partition, DkPartition},
+    PartitionError,
+};
+use download::download_file;
+use extract::extract_squashfs;
+use genfstab::genfstab_to_file;
+use mount::mount_root_path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use unsquashfs_wrapper::extract;
 
 mod chroot;
 mod download;
@@ -52,6 +63,18 @@ pub enum InstallError {
     CreateTokioRuntime(std::io::Error),
     #[error("Value {0:?} is not set")]
     IsNotSet(NotSetValue),
+    #[error(transparent)]
+    Partition(#[from] PartitionError),
+    #[error("Partition value: {0:?} is none")]
+    PartitionValueIsNone(PartitionNotSetValue),
+    #[error("Local file {0:?} is not found")]
+    LocalFileNotFound(String),
+}
+
+#[derive(Debug)]
+pub enum PartitionNotSetValue {
+    Path,
+    FsType,
 }
 
 #[derive(Debug)]
@@ -184,13 +207,137 @@ impl TryFrom<InstallConfigPrepare> for InstallConfig {
 }
 
 impl InstallConfig {
-    pub fn start_install<F: Fn(&str), F2: Fn(usize)>(
-        self,
-        progress_str: F,
-        progress_num: F2,
-    ) -> Result<(), InstallError> {
-        progress_str("Step 1/8 Formatting disk...");
-        progress_num(0);
+    pub fn start_install<F, F2, F3>(
+        mut self,
+        step: F,
+        progress: F2,
+        velocity: F3,
+        tmp_mount_path: PathBuf,
+    ) -> Result<(), InstallError>
+    where
+        F: Fn(u8),
+        F2: Fn(usize),
+        F3: Fn(usize),
+    {
+        step(1);
+        progress(0);
+
+        self.format_partitions()?;
+
+        progress(100);
+
+        step(2);
+        progress(0);
+
+        self.mount_partitions(&tmp_mount_path)?;
+        let (squashfs_path, total_size) = download_file(&self.download, &progress, &velocity)?;
+
+        let to_path = match self.download {
+            DownloadType::Http { to_path, .. } => to_path,
+            DownloadType::File(path) => path,
+        };
+
+        step(3);
+        progress(0);
+
+        extract_squashfs(
+            total_size as f64,
+            squashfs_path,
+            to_path,
+            &progress,
+            &velocity,
+        )?;
+
+        step(4);
+        progress(0);
+
+        genfstab_to_file(
+            &self
+                .target_partition
+                .path
+                .ok_or(InstallError::PartitionValueIsNone(
+                    PartitionNotSetValue::Path,
+                ))?,
+            &self
+                .target_partition
+                .fs_type
+                .ok_or(InstallError::PartitionValueIsNone(
+                    PartitionNotSetValue::FsType,
+                ))?,
+            &tmp_mount_path,
+            Path::new("/"),
+        )?;
+
+        if let Some(ref efi_partition) = self.efi_partition {
+            genfstab_to_file(
+                &efi_partition
+                    .path
+                    .as_ref()
+                    .ok_or(InstallError::PartitionValueIsNone(
+                        PartitionNotSetValue::Path,
+                    ))?,
+                &efi_partition
+                    .fs_type
+                    .as_ref()
+                    .ok_or(InstallError::PartitionValueIsNone(
+                        PartitionNotSetValue::FsType,
+                    ))?,
+                &tmp_mount_path,
+                Path::new("/efi"),
+            )?;
+        }
+
+        progress(100);
+
+        step(5);
+        progress(0);
+
+        Ok(())
+    }
+
+    fn mount_partitions(&self, tmp_mount_path: &Path) -> Result<(), InstallError> {
+        mount_root_path(
+            self.target_partition.path.as_deref(),
+            &tmp_mount_path,
+            self.target_partition
+                .fs_type
+                .as_ref()
+                .ok_or(InstallError::PartitionValueIsNone(
+                    PartitionNotSetValue::FsType,
+                ))?,
+        )?;
+
+        if let Some(ref efi) = self.efi_partition {
+            let efi_mount_path = tmp_mount_path.join("efi");
+            fs::create_dir_all(&efi_mount_path).map_err(|e| InstallError::OperateFile {
+                path: efi_mount_path.display().to_string(),
+                err: e,
+            })?;
+
+            mount_root_path(
+                efi.path.as_deref(),
+                &efi_mount_path,
+                efi.fs_type
+                    .as_ref()
+                    .ok_or(InstallError::PartitionValueIsNone(
+                        PartitionNotSetValue::FsType,
+                    ))?,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn format_partitions(&mut self) -> Result<(), InstallError> {
+        format_partition(&self.target_partition)?;
+
+        if let Some(efi) = &mut self.efi_partition {
+            if efi.fs_type.is_none() {
+                // format the un-formatted ESP partition
+                efi.fs_type = Some("vfat".to_string());
+            }
+            format_partition(&efi)?;
+        }
 
         Ok(())
     }
