@@ -128,7 +128,6 @@ pub enum DownloadType {
 pub struct InstallConfigPrepare {
     pub locale: Option<String>,
     pub timezone: Option<String>,
-    pub flaver: Option<String>,
     pub download: Option<DownloadType>,
     pub user: Option<User>,
     pub rtc_as_localtime: bool,
@@ -157,7 +156,6 @@ impl Default for InstallConfigPrepare {
         Self {
             locale: None,
             timezone: None,
-            flaver: None,
             download: None,
             user: None,
             rtc_as_localtime: false,
@@ -172,7 +170,6 @@ impl Default for InstallConfigPrepare {
 pub struct InstallConfig {
     local: String,
     timezone: String,
-    flaver: String,
     pub download: DownloadType,
     user: User,
     rtc_as_localtime: bool,
@@ -193,9 +190,6 @@ impl TryFrom<InstallConfigPrepare> for InstallConfig {
             timezone: value
                 .timezone
                 .ok_or(InstallError::IsNotSet(NotSetValue::Timezone))?,
-            flaver: value
-                .flaver
-                .ok_or(InstallError::IsNotSet(NotSetValue::Flaver))?,
             download: value
                 .download
                 .ok_or(InstallError::IsNotSet(NotSetValue::Download))?,
@@ -262,6 +256,7 @@ impl InstallConfig {
             &*velocity,
         )?;
 
+        velocity(0);
         step(4);
         progress(0.0);
 

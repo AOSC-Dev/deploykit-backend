@@ -30,9 +30,6 @@ trait Deploykit {
 
 #[derive(Parser, Debug)]
 struct Args {
-    /// Select AOSC OS variant to install (e.g., Desktop, Server, Base)
-    #[clap(long, default_value = "Base")]
-    flaver: String,
     /// Set URL for download source
     // #[clap(long, default_value = "https://repo.aosc.io/aosc-os")]
     // mirror_url: String,
@@ -60,7 +57,6 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
     let Args {
-        flaver,
         user,
         password,
         hostname,
@@ -85,7 +81,6 @@ async fn main() -> Result<()> {
     let connection = Connection::system().await?;
     let proxy = DeploykitProxy::new(&connection).await?;
 
-    proxy.set_config("flaver", &flaver).await?;
     proxy.set_config("download", &serde_json::json!({
         // "Http": {
         //     "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",

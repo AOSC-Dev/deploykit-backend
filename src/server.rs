@@ -129,11 +129,6 @@ impl DeploykitServer {
                     .timezone
                     .clone()
                     .unwrap_or_else(|| not_set_error(field)),
-                "flaver" => self
-                    .config
-                    .flaver
-                    .clone()
-                    .unwrap_or_else(|| not_set_error(field)),
                 "download" => serde_json::to_string(&self.config.download)
                     .unwrap_or_else(|_| not_set_error(field)),
                 "user" => serde_json::to_string(&self.config.user.clone())
@@ -246,10 +241,6 @@ fn set_config_inner(
         }
         "timezone" => {
             config.timezone = Some(value.to_string());
-            Ok(())
-        }
-        "flaver" => {
-            config.flaver = Some(value.to_string());
             Ok(())
         }
         "download" => {
