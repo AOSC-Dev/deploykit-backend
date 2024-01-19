@@ -16,6 +16,8 @@ pub enum DeploykitError {
     SetValue(String, String),
     #[error("Failed to auto create partitions: {0}")]
     AutoPartition(String),
+    #[error("Failed to install system: {0}")]
+    Install(String),
 }
 
 #[derive(Debug, Serialize)]

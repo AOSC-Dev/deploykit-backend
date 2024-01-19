@@ -105,7 +105,7 @@ pub enum GenFstabErrorKind {
     UUID,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum DownloadType {
     Http {
         url: String,
@@ -115,7 +115,7 @@ pub enum DownloadType {
     File(PathBuf),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InstallConfigPrepare {
     pub locale: Option<String>,
     pub timezone: Option<String>,
@@ -136,7 +136,7 @@ pub struct User {
     pub root_password: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SwapFile {
     Automatic,
     Custom(u64),
@@ -208,7 +208,7 @@ impl TryFrom<InstallConfigPrepare> for InstallConfig {
 
 impl InstallConfig {
     pub fn start_install<F, F2, F3>(
-        mut self,
+        &self,
         step: F,
         progress: F2,
         velocity: F3,
@@ -232,18 +232,13 @@ impl InstallConfig {
         self.mount_partitions(&tmp_mount_path)?;
         let (squashfs_path, total_size) = download_file(&self.download, &progress, &velocity)?;
 
-        let to_path = match self.download {
-            DownloadType::Http { to_path, .. } => to_path,
-            DownloadType::File(path) => path,
-        };
-
         step(3);
         progress(0);
 
         extract_squashfs(
             total_size as f64,
             squashfs_path,
-            to_path,
+            tmp_mount_path.to_path_buf(),
             &progress,
             &velocity,
         )?;
@@ -251,16 +246,29 @@ impl InstallConfig {
         step(4);
         progress(0);
 
+        self.genfatab(&tmp_mount_path)?;
+
+        progress(100);
+
+        step(5);
+        progress(0);
+
+        Ok(())
+    }
+
+    fn genfatab(&self, tmp_mount_path: &Path) -> Result<(), InstallError> {
         genfstab_to_file(
             &self
                 .target_partition
                 .path
+                .as_ref()
                 .ok_or(InstallError::PartitionValueIsNone(
                     PartitionNotSetValue::Path,
                 ))?,
             &self
                 .target_partition
                 .fs_type
+                .as_ref()
                 .ok_or(InstallError::PartitionValueIsNone(
                     PartitionNotSetValue::FsType,
                 ))?,
@@ -286,11 +294,6 @@ impl InstallConfig {
                 Path::new("/efi"),
             )?;
         }
-
-        progress(100);
-
-        step(5);
-        progress(0);
 
         Ok(())
     }
@@ -328,15 +331,15 @@ impl InstallConfig {
         Ok(())
     }
 
-    fn format_partitions(&mut self) -> Result<(), InstallError> {
+    fn format_partitions(&self) -> Result<(), InstallError> {
         format_partition(&self.target_partition)?;
 
-        if let Some(efi) = &mut self.efi_partition {
-            if efi.fs_type.is_none() {
-                // format the un-formatted ESP partition
-                efi.fs_type = Some("vfat".to_string());
-            }
-            format_partition(&efi)?;
+        if let Some(ref efi) = self.efi_partition {
+            // if efi.fs_type.is_none() {
+            //     // format the un-formatted ESP partition
+            //     efi.fs_type = Some("vfat".to_string());
+            // }
+            format_partition(efi)?;
         }
 
         Ok(())

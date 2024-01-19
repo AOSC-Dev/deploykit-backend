@@ -1,27 +1,34 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{
+        mpsc::{self, Sender},
+        Arc, Mutex,
+    },
+    thread,
+};
 
 use disk::{
     devices::list_devices,
     partition::{auto_create_partitions, DkPartition},
 };
-use install::{DownloadType, InstallConfigPrepare, User};
+use install::{DownloadType, InstallConfig, InstallConfigPrepare, User};
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, info};
 use zbus::dbus_interface;
 
 use crate::error::DeploykitError;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct DeploykitServer {
     config: InstallConfigPrepare,
-    progress: ProgressStatus,
+    progress: Arc<Mutex<ProgressStatus>>,
 }
 
 impl Default for DeploykitServer {
     fn default() -> Self {
         Self {
             config: InstallConfigPrepare::default(),
-            progress: ProgressStatus::Pending,
+            progress: Arc::new(Mutex::new(ProgressStatus::Pending)),
         }
     }
 }
@@ -29,8 +36,37 @@ impl Default for DeploykitServer {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProgressStatus {
     Pending,
-    Working(String, u8),
+    Working(u8, usize, usize),
     Done,
+}
+
+impl ProgressStatus {
+    fn change_step(&mut self, step: u8) {
+        match self {
+            ProgressStatus::Working(_, progress, v) => {
+               *self = ProgressStatus::Working(step, *progress, *v);
+            }
+            _ => {}
+        }
+    }
+
+    fn change_progress(&mut self, progress: usize) {
+        match self {
+            ProgressStatus::Working(step, _, v) => {
+                *self = ProgressStatus::Working(*step, progress, *v);
+            }
+            _ => {}
+        }
+    }
+
+    fn change_velocity(&mut self, velocity: usize) {
+        match self {
+            ProgressStatus::Working(step, progress, _) => {
+                *self = ProgressStatus::Working(*step, *progress, velocity);
+            }
+            _ => {}
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -44,7 +80,7 @@ struct DkDevice {
 impl DeploykitServer {
     fn get_config(&self, field: &str) -> String {
         if field.is_empty() {
-            match serde_json::to_string(self) {
+            match serde_json::to_string(&self.config) {
                 Ok(s) => s,
                 Err(e) => {
                     error!("Failed to get config: {e}");
@@ -104,7 +140,8 @@ impl DeploykitServer {
     }
 
     fn get_progress(&self) -> String {
-        serde_json::to_string(&self.progress).unwrap_or_else(|_| "Failed to serialize".to_string())
+        let ps = self.progress.lock().unwrap();
+        serde_json::to_string(&*ps).unwrap_or_else(|_| "Failed to serialize".to_string())
     }
 
     fn reset_config(&mut self) -> String {
@@ -142,6 +179,46 @@ impl DeploykitServer {
         };
 
         s
+    }
+
+    fn start_install(&mut self) -> String {
+        {
+            let mut ps = self.progress.lock().unwrap();
+            *ps = ProgressStatus::Working(0, 0, 0);
+        }
+
+        let (step_tx, step_rx) = mpsc::channel();
+        let (progress_tx, progress_rx) = mpsc::channel();
+        let (v_tx, v_rx) = mpsc::channel();
+
+        {
+            let ps = self.progress.clone();
+            thread::spawn(move || {
+                let mut ps = ps.lock().unwrap();
+                if let Ok(v) = step_rx.try_recv() {
+                    ps.change_step(v);
+                }
+    
+                if let Ok(v) = progress_rx.try_recv() {
+                    ps.change_progress(v);
+                }
+    
+                if let Ok(v) = v_rx.try_recv() {
+                    ps.change_velocity(v);
+                }
+            });
+        }
+
+        if let Err(e) = start_install_inner(self.config.clone(), step_tx, progress_tx, v_tx) {
+            return serde_json::to_string(&e).unwrap_or_else(|_| "Failed to serialize".to_string());
+        }
+
+        {
+            let mut ps = self.progress.lock().unwrap();
+            *ps = ProgressStatus::Done;
+        }
+
+        "ok".to_string()
     }
 }
 
@@ -219,4 +296,36 @@ fn not_set_error(field: &str) -> String {
     error!("field {field} is not set");
     serde_json::to_string(&DeploykitError::not_set(field))
         .unwrap_or_else(|_| "Failed to serialize".to_string())
+}
+
+fn start_install_inner(
+    config: InstallConfigPrepare,
+    step_tx: Sender<u8>,
+    progress_tx: Sender<usize>,
+    v_tx: Sender<usize>,
+) -> Result<(), DeploykitError> {
+    let config =
+        InstallConfig::try_from(config).map_err(|e| DeploykitError::Install(e.to_string()))?;
+
+    info!("Starting install");
+
+    let temp_dir = tempfile::tempdir()
+        .map_err(|e| DeploykitError::Install(e.to_string()))?
+        .into_path()
+        .to_path_buf();
+
+    config
+        .start_install(
+            |step| {
+                step_tx.send(step).unwrap();
+            },
+            |progress| {
+                progress_tx.send(progress).unwrap();
+            },
+            |v| v_tx.send(v).unwrap(),
+            temp_dir,
+        )
+        .map_err(|e| DeploykitError::Install(e.to_string()))?;
+
+    Ok(())
 }
