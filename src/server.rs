@@ -4,7 +4,7 @@ use std::{
         mpsc::{self, Sender},
         Arc, Mutex,
     },
-    thread::{self, sleep, JoinHandle},
+    thread::{self, JoinHandle},
 };
 
 use disk::{
@@ -33,7 +33,7 @@ impl Default for DeploykitServer {
     fn default() -> Self {
         let ps = Arc::new(Mutex::new(ProgressStatus::Pending));
         let (step_tx, step_rx) = mpsc::channel();
-        let (progress_tx, progress_rx): (Sender<f64>, _) = mpsc::channel();
+        let (progress_tx, progress_rx) = mpsc::channel();
         let (v_tx, v_rx) = mpsc::channel();
         Self {
             config: InstallConfigPrepare::default(),

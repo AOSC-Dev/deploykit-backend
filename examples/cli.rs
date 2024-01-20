@@ -31,7 +31,7 @@ trait Deploykit {
 #[derive(Parser, Debug)]
 struct Args {
     /// Set URL for download source
-    // #[clap(long, default_value = "https://repo.aosc.io/aosc-os")]
+    #[clap(long)]
     // mirror_url: String,
     /// Set name of the default user
     #[clap(long)]
@@ -122,7 +122,7 @@ async fn main() -> Result<()> {
         loop {
             match proxy_clone.get_progress().await {
                 Ok(progress) => {
-                    if progress == "Done" {
+                    if progress == "\"Done\"" {
                         break;
                     }
                     println!("Progress: {}", progress);
