@@ -1,11 +1,11 @@
 use std::{
     fs::File,
-    io::{self, Write},
+    io::Write,
     os::unix::fs::PermissionsExt,
     path::Path,
 };
 
-use rustix::{fd::AsRawFd, fs::FallocateFlags, io::Errno};
+use rustix::{fd::AsRawFd, fs::FallocateFlags};
 use tracing::info;
 
 use crate::{utils::run_command, InstallError};
@@ -42,13 +42,7 @@ pub fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), InstallError> {
         )
     };
 
-    if res != 0 {
-        let res = Errno::from_raw_os_error(res).kind();
-        return Err(InstallError::OperateFile {
-            path: swap_path.display().to_string(),
-            err: io::Error::new(res, "Failed to fallocate swapfile"),
-        });
-    }
+    dbg!(res);
 
     swapfile.flush().map_err(|e| InstallError::OperateFile {
         path: swap_path.display().to_string(),

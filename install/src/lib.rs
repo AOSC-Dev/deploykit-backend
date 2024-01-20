@@ -162,6 +162,13 @@ pub enum SwapFile {
     Disable,
 }
 
+// #[test]
+// fn test() {
+//     let a = SwapFile::Automatic;
+
+//     dbg!(serde_json::to_string(&a).unwrap());
+// }
+
 impl Default for InstallConfigPrepare {
     fn default() -> Self {
         Self {

@@ -1107,6 +1107,7 @@ dependencies = [
  "reqwest",
  "rustix 0.38.30",
  "serde",
+ "serde_json",
  "sha2",
  "sysinfo",
  "tar",

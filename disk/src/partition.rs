@@ -334,7 +334,7 @@ pub fn auto_create_partitions(
     })?;
 
     let p = DkPartition {
-        path: Some(PathBuf::from("/dev/loop20p1")),
+        path: Some(PathBuf::from("/dev/loop30p1")),
         parent_path: Some(dev.to_path_buf()),
         fs_type: Some("ext4".to_string()),
         size: system_end_sector * device.sector_size(),
@@ -364,7 +364,7 @@ pub fn auto_create_partitions(
         })?;
 
         let p = DkPartition {
-            path: Some(PathBuf::from("/dev/loop20p2")),
+            path: Some(PathBuf::from("/dev/loop30p2")),
             parent_path: Some(dev.to_path_buf()),
             fs_type: Some("vfat".to_string()),
             size: 512 * 1024_u64.pow(2),

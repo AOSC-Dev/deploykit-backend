@@ -21,3 +21,4 @@ tokio = { version = "1.35", features = ["rt-multi-thread", "fs"] }
 sha2 = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 hex = "0.4"
+serde_json = "1.0.111"

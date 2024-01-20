@@ -16,7 +16,7 @@ use disk::{
 use install::{
     chroot::{escape_chroot, get_dir_fd},
     mount::{remove_bind_mounts, umount_root_path},
-    DownloadType, InstallConfig, InstallConfigPrepare, User,
+    DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -166,6 +166,7 @@ impl DeploykitServer {
                 "rtc_as_localtime" => self.config.rtc_as_localtime.to_string(),
                 "target_partition" => Message::check_is_set(field, &self.config.target_partition),
                 "efi_partition" => Message::check_is_set(field, &self.config.efi_partition),
+                "swapfile" => Message::ok(&self.config.swapfile),
                 _ => {
                     error!("Unknown field: {field}");
                     Message::err(format!("Unknown field: {field}"))
@@ -226,6 +227,13 @@ impl DeploykitServer {
     }
 
     fn start_install(&mut self) -> String {
+        {
+            let ps = self.progress.lock().unwrap();
+            if matches!(*ps, ProgressStatus::Working(_, _, _)) {
+                return Message::err("Another installation is working.");
+            }
+        }
+
         match start_install_inner(
             self.config.clone(),
             self.step_tx.clone(),
@@ -303,6 +311,11 @@ fn set_config_inner(
             let p = serde_json::from_str::<DkPartition>(value)
                 .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
             config.efi_partition = Some(p);
+            Ok(())
+        }
+        "swapfile" => {
+            config.swapfile = serde_json::from_str::<SwapFile>(value)
+                .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
             Ok(())
         }
         _ => {

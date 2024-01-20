@@ -86,11 +86,11 @@ async fn main() -> Result<()> {
         .set_config(
             "download",
             &serde_json::json!({
-                // "Http": {
-                //     "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
-                //     "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
-                // }
-                "File": "/home/saki/squashfs"
+                "Http": {
+                    "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
+                    "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
+                }
+                // "File": "/home/saki/squashfs"
             })
             .to_string(),
         )
@@ -113,8 +113,10 @@ async fn main() -> Result<()> {
         )
         .await?;
 
-    info!("Auto partitioning /dev/loop20...");
-    let result = proxy.auto_partition("/dev/loop20").await?;
+    proxy.set_config("swapfile", "\"Disable\"").await?;
+
+    info!("Auto partitioning /dev/loop30...");
+    let result = proxy.auto_partition("/dev/loop30").await?;
     let result: Value = serde_json::from_str(&result)?;
 
     if result
@@ -123,7 +125,7 @@ async fn main() -> Result<()> {
         .map(|x| x == "ok")
         .unwrap_or(false)
     {
-        bail!("Failed to auto partition /dev/loop20: {}", result);
+        bail!("Failed to auto partition /dev/loop30: {}", result);
     }
 
     println!("{}", proxy.get_config("").await?);
