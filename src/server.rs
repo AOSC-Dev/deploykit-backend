@@ -226,11 +226,6 @@ impl DeploykitServer {
     }
 
     fn start_install(&mut self) -> String {
-        {
-            let mut ps = self.progress.lock().unwrap();
-            *ps = ProgressStatus::Working(0, 0.0, 0);
-        }
-
         match start_install_inner(
             self.config.clone(),
             self.step_tx.clone(),
@@ -240,6 +235,11 @@ impl DeploykitServer {
         ) {
             Ok(j) => self.install_thread = Some(j),
             Err(e) => return Message::err(e),
+        }
+
+        {
+            let mut ps = self.progress.lock().unwrap();
+            *ps = ProgressStatus::Working(0, 0.0, 0);
         }
 
         Message::ok(&"")
