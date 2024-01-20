@@ -20,14 +20,14 @@ use crate::{
     chroot::{dive_into_guest, escape_chroot, get_dir_fd}, dracut::execute_dracut, grub::execute_grub_install, hostname::set_hostname, locale::set_locale, mount::{remove_bind_mounts, umount_root_path}, ssh::gen_ssh_key, user::add_new_user, zoneinfo::set_zoneinfo
 };
 
-mod chroot;
+pub mod chroot;
 mod download;
 mod dracut;
 mod extract;
 mod genfstab;
 mod grub;
 mod hostname;
-mod mount;
+pub mod mount;
 mod ssh;
 mod swap;
 mod user;
@@ -175,7 +175,7 @@ pub struct InstallConfig {
     rtc_as_localtime: bool,
     hostname: String,
     swapfile: SwapFile,
-    target_partition: DkPartition,
+    pub target_partition: DkPartition,
     efi_partition: Option<DkPartition>,
 }
 
@@ -323,6 +323,8 @@ impl InstallConfig {
 
         info!("Unmounting filesystems...");
         umount_root_path(&tmp_mount_path)?; 
+
+        progress(100.0);
 
         Ok(())
     }

@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use eyre::{bail, Result};
+use serde_json::Value;
 use tokio::time::sleep;
 use tracing::info;
 use tracing::level_filters::LevelFilter;
@@ -81,13 +82,19 @@ async fn main() -> Result<()> {
     let connection = Connection::system().await?;
     let proxy = DeploykitProxy::new(&connection).await?;
 
-    proxy.set_config("download", &serde_json::json!({
-        // "Http": {
-        //     "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
-        //     "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
-        // }
-        "File": "/home/saki/squashfs"
-    }).to_string()).await?;
+    proxy
+        .set_config(
+            "download",
+            &serde_json::json!({
+                // "Http": {
+                //     "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
+                //     "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
+                // }
+                "File": "/home/saki/squashfs"
+            })
+            .to_string(),
+        )
+        .await?;
     proxy.set_config("timezone", &timezone).await?;
     proxy.set_config("locale", &locale).await?;
     proxy
@@ -108,8 +115,14 @@ async fn main() -> Result<()> {
 
     info!("Auto partitioning /dev/loop20...");
     let result = proxy.auto_partition("/dev/loop20").await?;
+    let result: Value = serde_json::from_str(&result)?;
 
-    if result != "ok" {
+    if result
+        .get("result")
+        .and_then(|x| x.as_str())
+        .map(|x| x == "ok")
+        .unwrap_or(false)
+    {
         bail!("Failed to auto partition /dev/loop20: {}", result);
     }
 

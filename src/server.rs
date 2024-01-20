@@ -1,5 +1,7 @@
 use std::{
-    path::Path,
+    os::unix::prelude::OwnedFd,
+    path::{Path, PathBuf},
+    process::exit,
     sync::{
         mpsc::{self, Sender},
         Arc, Mutex,
@@ -11,7 +13,11 @@ use disk::{
     devices::list_devices,
     partition::{auto_create_partitions, DkPartition},
 };
-use install::{DownloadType, InstallConfig, InstallConfigPrepare, User};
+use install::{
+    chroot::{escape_chroot, get_dir_fd},
+    mount::{remove_bind_mounts, umount_root_path},
+    DownloadType, InstallConfig, InstallConfigPrepare, User,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{error, info};
@@ -324,10 +330,26 @@ fn start_install_inner(
         .to_path_buf();
 
     let tmp_dir_clone = temp_dir.clone();
+    let tmp_dir_clone2 = tmp_dir_clone.clone();
+    let tmp_dir_clone3 = tmp_dir_clone.clone();
 
     if let DownloadType::Http { to_path, .. } = &mut config.download {
         *to_path = Some(tmp_dir_clone.join("squashfs"));
     }
+
+    let root_fd = get_dir_fd(Path::new("/")).map_err(|e| DeploykitError::Install(e.to_string()))?;
+    let root_fd_clone = root_fd
+        .try_clone()
+        .map_err(|e| DeploykitError::Install(e.to_string()))?;
+
+    ctrlc::set_handler(move || {
+        safe_exit_env(
+            root_fd_clone.try_clone().unwrap(),
+            tmp_dir_clone3.clone(),
+        );
+        exit(1);
+    })
+    .unwrap();
 
     let t = thread::spawn(move || {
         let t = thread::spawn(move || {
@@ -357,10 +379,18 @@ fn start_install_inner(
             }
             Err(e) => {
                 error!("Install failed: {e}");
+                safe_exit_env(root_fd, tmp_dir_clone2);
+
                 Err(e)
             }
         }
     });
 
     Ok(t)
+}
+
+fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
+    escape_chroot(root_fd).ok();
+    remove_bind_mounts(&tmp_dir).ok();
+    umount_root_path(&tmp_dir).ok();
 }
