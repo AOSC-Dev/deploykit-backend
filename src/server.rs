@@ -343,10 +343,7 @@ fn start_install_inner(
         .map_err(|e| DeploykitError::Install(e.to_string()))?;
 
     ctrlc::set_handler(move || {
-        safe_exit_env(
-            root_fd_clone.try_clone().unwrap(),
-            tmp_dir_clone3.clone(),
-        );
+        safe_exit_env(root_fd_clone.try_clone().unwrap(), tmp_dir_clone3.clone());
         exit(1);
     })
     .unwrap();

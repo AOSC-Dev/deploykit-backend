@@ -136,28 +136,6 @@ fn set_full_name(
     Ok(s)
 }
 
-pub fn is_acceptable_username(username: &str) -> bool {
-    if username.is_empty() {
-        return false;
-    }
-
-    if username == "root" {
-        return false;
-    }
-
-    for (i, c) in username.as_bytes().iter().enumerate() {
-        if i == 0 {
-            if !c.is_ascii_lowercase() {
-                return false;
-            }
-        } else if !c.is_ascii_lowercase() && !c.is_ascii_digit() {
-            return false;
-        }
-    }
-
-    true
-}
-
 /// Adds a new normal user to the guest environment
 /// Must be used in a chroot context
 pub fn add_new_user(name: &str, password: &str) -> Result<(), InstallError> {
@@ -199,20 +177,6 @@ pub fn chpasswd(name: &str, password: &str) -> Result<(), InstallError> {
     info!("Running chpasswd successfully");
 
     Ok(())
-}
-
-#[test]
-fn test_username_validation() {
-    assert!(is_acceptable_username("foo"));
-    assert!(is_acceptable_username("cth451"));
-    assert!(!is_acceptable_username("老白"));
-    assert!(!is_acceptable_username("BAIMINGCONG"));
-    assert!(!is_acceptable_username("root"));
-    assert!(!is_acceptable_username("/root"));
-    assert!(!is_acceptable_username("root:root"));
-    assert!(!is_acceptable_username("root\n"));
-    assert!(!is_acceptable_username("root\t"));
-    assert!(!is_acceptable_username("ro ot"));
 }
 
 #[test]

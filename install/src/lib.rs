@@ -13,11 +13,21 @@ use extract::extract_squashfs;
 use genfstab::genfstab_to_file;
 use mount::mount_root_path;
 use serde::{Deserialize, Serialize};
+use sysinfo::System;
 use thiserror::Error;
 use tracing::info;
 
 use crate::{
-    chroot::{dive_into_guest, escape_chroot, get_dir_fd}, dracut::execute_dracut, grub::execute_grub_install, hostname::set_hostname, locale::set_locale, mount::{remove_bind_mounts, umount_root_path}, ssh::gen_ssh_key, user::add_new_user, zoneinfo::set_zoneinfo
+    chroot::{dive_into_guest, escape_chroot, get_dir_fd},
+    dracut::execute_dracut,
+    grub::execute_grub_install,
+    hostname::set_hostname,
+    locale::{set_hwclock_tc, set_locale},
+    mount::{remove_bind_mounts, umount_root_path},
+    ssh::gen_ssh_key,
+    swap::{create_swapfile, get_recommend_swap_size, swapoff},
+    user::{add_new_user, passwd_set_fullname},
+    zoneinfo::set_zoneinfo,
 };
 
 pub mod chroot;
@@ -27,13 +37,13 @@ mod extract;
 mod genfstab;
 mod grub;
 mod hostname;
+mod locale;
 pub mod mount;
 mod ssh;
 mod swap;
 mod user;
 mod utils;
 mod zoneinfo;
-mod locale;
 
 #[derive(Debug, Error)]
 pub enum InstallError {
@@ -142,9 +152,10 @@ pub struct User {
     pub username: String,
     pub password: String,
     pub root_password: Option<String>,
+    pub full_name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum SwapFile {
     Automatic,
     Custom(u64),
@@ -237,6 +248,19 @@ impl InstallConfig {
         progress(50.0);
 
         // TODO: swap
+        match self.swapfile {
+            SwapFile::Automatic => {
+                let mut sys = System::new_all();
+                sys.refresh_memory();
+                let total_memory = sys.total_memory();
+                let size = get_recommend_swap_size(total_memory);
+                create_swapfile(size, &tmp_mount_path)?;
+            }
+            SwapFile::Custom(size) => {
+                create_swapfile(size as f64, &tmp_mount_path)?;
+            }
+            SwapFile::Disable => {}
+        }
 
         let progress_arc = Arc::new(progress);
         let velocity_arc = Arc::new(velocity);
@@ -280,13 +304,14 @@ impl InstallConfig {
         step(6);
         progress(0.0);
 
+        info!("Installing grub ...");
         self.install_grub()?;
 
         progress(100.0);
 
         step(7);
         progress(0.0);
-    
+
         info!("Generating SSH key ...");
         gen_ssh_key()?;
 
@@ -298,8 +323,11 @@ impl InstallConfig {
         // TODO: swap
         progress(25.0);
 
-        info!("Setting timezone as {}", self.timezone);
+        info!("Setting timezone as {} ...", self.timezone);
         set_zoneinfo(&self.timezone)?;
+
+        info!("Setting rtc_as_localtime ...");
+        set_hwclock_tc(!self.rtc_as_localtime)?;
         progress(50.0);
 
         info!("Setting hostname as {}", self.hostname);
@@ -309,8 +337,13 @@ impl InstallConfig {
         info!("Setting User ...");
         // TODO: fummname
         add_new_user(&self.user.username, &self.user.password)?;
+
+        if let Some(full_name) = &self.user.full_name {
+            passwd_set_fullname(&full_name, &self.user.username)?;
+        }
+
         progress(80.0);
-        
+
         info!("Setting locale ...");
         set_locale(&self.local)?;
         progress(90.0);
@@ -322,7 +355,11 @@ impl InstallConfig {
         remove_bind_mounts(&tmp_mount_path)?;
 
         info!("Unmounting filesystems...");
-        umount_root_path(&tmp_mount_path)?; 
+        umount_root_path(&tmp_mount_path)?;
+
+        if self.swapfile != SwapFile::Disable {
+            swapoff(&tmp_mount_path);
+        }
 
         progress(100.0);
 

@@ -18,30 +18,3 @@ pub fn set_hostname(name: &str) -> Result<(), InstallError> {
 
     Ok(())
 }
-
-pub fn is_valid_hostname(hostname: &str) -> bool {
-    if hostname.is_empty() || hostname.starts_with('-') {
-        return false;
-    }
-    for c in hostname.as_bytes() {
-        if c.is_ascii_alphanumeric() || *c == b'-' {
-            continue;
-        } else {
-            return false;
-        }
-    }
-
-    true
-}
-
-#[test]
-fn test_hostname_validation() {
-    assert!(is_valid_hostname("foo"));
-    assert!(is_valid_hostname("foo-2e10"));
-    assert!(is_valid_hostname("jeffbai-device"));
-    assert!(!is_valid_hostname("invalid_host"));
-    assert!(!is_valid_hostname("-invalid"));
-    assert!(!is_valid_hostname("+invalid"));
-    assert!(is_valid_hostname("JellyDimension"));
-    assert!(!is_valid_hostname("Jelly_Dimension"));
-}

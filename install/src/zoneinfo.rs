@@ -12,9 +12,11 @@ pub fn set_zoneinfo(zone: &str) -> Result<(), InstallError> {
         })?;
     }
 
-    symlink(format!("/usr/share/zoneinfo/{zone}"), "/etc/localtime").map_err(|e| InstallError::OperateFile {
-        path: "/etc/localtime".to_string(),
-        err: e,
+    symlink(format!("/usr/share/zoneinfo/{zone}"), "/etc/localtime").map_err(|e| {
+        InstallError::OperateFile {
+            path: "/etc/localtime".to_string(),
+            err: e,
+        }
     })?;
 
     Ok(())

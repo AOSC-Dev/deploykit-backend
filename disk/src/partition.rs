@@ -422,7 +422,9 @@ pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
 }
 
 #[cfg(not(debug_assertions))]
-pub fn auto_create_partitions(dev: &Path) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
+pub fn auto_create_partitions(
+    dev: &Path,
+) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
     let mut device = Device::new(dev).map_err(|e| PartitionError::open_device(dev, e))?;
 
     let device = &mut device as *mut Device;
