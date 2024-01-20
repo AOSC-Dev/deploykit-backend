@@ -13,6 +13,7 @@ use disk::{
 };
 use install::{DownloadType, InstallConfig, InstallConfigPrepare, User};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tracing::{error, info};
 use zbus::dbus_interface;
 
@@ -105,48 +106,63 @@ struct DkDevice {
     size: u64,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "result")]
+pub enum Message {
+    Ok { data: Value },
+    Error { data: Value },
+}
+
+impl Message {
+    pub fn ok<T: Serialize>(value: &T) -> String {
+        match serde_json::to_value(value).and_then(|x| serde_json::to_string(&Self::Ok { data: x }))
+        {
+            Ok(v) => v,
+            Err(e) => serde_json::to_string(&Self::Error {
+                data: Value::String(format!("Failed to serialize data: {e:?}")),
+            })
+            .unwrap(),
+        }
+    }
+
+    pub fn err<T: Serialize>(value: T) -> String {
+        match serde_json::to_value(value)
+            .and_then(|x| serde_json::to_string(&Self::Error { data: x }))
+        {
+            Ok(v) => v,
+            Err(e) => serde_json::to_string(&Self::Error {
+                data: Value::String(format!("Failed to serialize data: {e:?}")),
+            })
+            .unwrap(),
+        }
+    }
+
+    pub fn check_is_set<T: Serialize>(v_name: &str, v: &Option<T>) -> String {
+        match v {
+            Some(v) => Self::ok(&v),
+            None => Self::err(format!("{v_name} is not set")),
+        }
+    }
+}
+
 #[dbus_interface(name = "io.aosc.Deploykit1")]
 impl DeploykitServer {
     fn get_config(&self, field: &str) -> String {
         if field.is_empty() {
-            match serde_json::to_string(&self.config) {
-                Ok(s) => s,
-                Err(e) => {
-                    error!("Failed to get config: {e}");
-                    serde_json::to_string(&DeploykitError::get_config(e))
-                        .expect("Failed to serialize error")
-                }
-            }
+            Message::ok(&self.config)
         } else {
             match field {
-                "locale" => self
-                    .config
-                    .locale
-                    .clone()
-                    .unwrap_or_else(|| not_set_error(field)),
-                "timezone" => self
-                    .config
-                    .timezone
-                    .clone()
-                    .unwrap_or_else(|| not_set_error(field)),
-                "download" => serde_json::to_string(&self.config.download)
-                    .unwrap_or_else(|_| not_set_error(field)),
-                "user" => serde_json::to_string(&self.config.user.clone())
-                    .unwrap_or_else(|_| not_set_error(field)),
-                "hostname" => self
-                    .config
-                    .hostname
-                    .clone()
-                    .unwrap_or_else(|| not_set_error(field)),
+                "locale" => Message::check_is_set(field, &self.config.locale),
+                "timezone" => Message::check_is_set(field, &self.config.timezone),
+                "download" => Message::check_is_set(field, &self.config.download),
+                "user" => Message::check_is_set(field, &self.config.user),
+                "hostname" => Message::check_is_set(field, &self.config.hostname),
                 "rtc_as_localtime" => self.config.rtc_as_localtime.to_string(),
-                "target_partition" => serde_json::to_string(&self.config.target_partition.clone())
-                    .unwrap_or_else(|_| not_set_error(field)),
-                "efi_partition" => serde_json::to_string(&self.config.target_partition.clone())
-                    .unwrap_or_else(|_| not_set_error(field)),
+                "target_partition" => Message::check_is_set(field, &self.config.target_partition),
+                "efi_partition" => Message::check_is_set(field, &self.config.efi_partition),
                 _ => {
                     error!("Unknown field: {field}");
-                    serde_json::to_string(&DeploykitError::unknown_field(field))
-                        .unwrap_or_else(|_| "Failed to serialize".to_string())
+                    Message::err(format!("Unknown field: {field}"))
                 }
             }
         }
@@ -154,23 +170,22 @@ impl DeploykitServer {
 
     fn set_config(&mut self, field: &str, value: &str) -> String {
         match set_config_inner(&mut self.config, field, value) {
-            Ok(()) => "ok".to_string(),
+            Ok(()) => Message::ok(&""),
             Err(e) => {
                 error!("Failed to set config: {e}");
-                serde_json::to_string(&e)
-                    .unwrap_or_else(|_| "Failed to serialize error".to_string())
+                Message::err(e)
             }
         }
     }
 
     fn get_progress(&self) -> String {
         let ps = self.progress.lock().unwrap();
-        serde_json::to_string(&*ps).unwrap_or_else(|_| "Failed to serialize".to_string())
+        Message::ok(&*ps)
     }
 
     fn reset_config(&mut self) -> String {
         self.config = InstallConfigPrepare::default();
-        "ok".to_string()
+        Message::ok(&"")
     }
 
     fn get_list_devices(&self) -> String {
@@ -183,7 +198,7 @@ impl DeploykitServer {
             });
         }
 
-        serde_json::to_string(&res).unwrap_or_else(|_| "Failed to serialize".to_string())
+        Message::ok(&res)
     }
 
     fn auto_partition(&mut self, dev: &str) -> String {
@@ -193,12 +208,11 @@ impl DeploykitServer {
             Ok((efi, p)) => {
                 self.config.efi_partition = efi;
                 self.config.target_partition = Some(p);
-                "ok".to_string()
+                Message::ok(&"")
             }
             Err(e) => {
                 error!("Failed to auto partition: {e}");
-                serde_json::to_string(&DeploykitError::AutoPartition(e.to_string()))
-                    .unwrap_or_else(|_| "Failed to serialize".to_string())
+                Message::err(DeploykitError::AutoPartition(e.to_string()))
             }
         };
 
@@ -219,13 +233,10 @@ impl DeploykitServer {
             self.progress.clone(),
         ) {
             Ok(j) => self.install_thread = Some(j),
-            Err(e) => {
-                return serde_json::to_string(&e)
-                    .unwrap_or_else(|_| "Failed to serialize".to_string());
-            }
+            Err(e) => return Message::err(e),
         }
 
-        "ok".to_string()
+        Message::ok(&"")
     }
 }
 
@@ -295,12 +306,6 @@ fn set_config_inner(
     }
 }
 
-fn not_set_error(field: &str) -> String {
-    error!("field {field} is not set");
-    serde_json::to_string(&DeploykitError::not_set(field))
-        .unwrap_or_else(|_| "Failed to serialize".to_string())
-}
-
 fn start_install_inner(
     config: InstallConfigPrepare,
     step_tx: Sender<u8>,
@@ -323,8 +328,6 @@ fn start_install_inner(
     if let DownloadType::Http { to_path, .. } = &mut config.download {
         *to_path = Some(tmp_dir_clone.join("squashfs"));
     }
-
-    dbg!(&config.download);
 
     let t = thread::spawn(move || {
         let t = thread::spawn(move || {
@@ -350,8 +353,8 @@ fn start_install_inner(
                 let mut ps = ps.lock().unwrap();
                 *ps = ProgressStatus::Done;
                 drop(ps);
-                res
-            },
+                Ok(())
+            }
             Err(e) => {
                 error!("Install failed: {e}");
                 Err(e)
