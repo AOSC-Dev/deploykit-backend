@@ -3,10 +3,12 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
     sync::{
+        atomic::{AtomicBool, Ordering},
         mpsc::{self, Sender},
         Arc, Mutex,
     },
-    thread::{self, JoinHandle},
+    thread::{self, sleep, JoinHandle},
+    time::Duration,
 };
 
 use disk::{
@@ -33,7 +35,8 @@ pub struct DeploykitServer {
     step_tx: Sender<u8>,
     progress_tx: Sender<f64>,
     v_tx: Sender<usize>,
-    install_thread: Option<JoinHandle<Result<(), DeploykitError>>>,
+    install_thread: Option<JoinHandle<()>>,
+    cancel_run_install: Arc<AtomicBool>,
 }
 
 impl Default for DeploykitServer {
@@ -65,6 +68,7 @@ impl Default for DeploykitServer {
             progress_tx,
             v_tx,
             install_thread: None,
+            cancel_run_install: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -240,6 +244,7 @@ impl DeploykitServer {
             self.progress_tx.clone(),
             self.v_tx.clone(),
             self.progress.clone(),
+            self.cancel_run_install.clone(),
         ) {
             Ok(j) => self.install_thread = Some(j),
             Err(e) => return Message::err(e),
@@ -248,6 +253,16 @@ impl DeploykitServer {
         {
             let mut ps = self.progress.lock().unwrap();
             *ps = ProgressStatus::Working(0, 0.0, 0);
+        }
+
+        Message::ok(&"")
+    }
+
+    fn cancel_install(&mut self) -> String {
+        if self.install_thread.is_some() {
+            self.cancel_run_install.store(true, Ordering::SeqCst);
+            sleep(Duration::from_millis(100));
+            self.cancel_run_install.store(false, Ordering::SeqCst);
         }
 
         Message::ok(&"")
@@ -331,7 +346,8 @@ fn start_install_inner(
     progress_tx: Sender<f64>,
     v_tx: Sender<usize>,
     ps: Arc<Mutex<ProgressStatus>>,
-) -> Result<JoinHandle<Result<(), DeploykitError>>, DeploykitError> {
+    cancel_install: Arc<AtomicBool>,
+) -> Result<JoinHandle<()>, DeploykitError> {
     let mut config =
         InstallConfig::try_from(config).map_err(|e| DeploykitError::Install(e.to_string()))?;
 
@@ -359,7 +375,7 @@ fn start_install_inner(
         safe_exit_env(root_fd_clone.try_clone().unwrap(), tmp_dir_clone3.clone());
         exit(1);
     })
-    .unwrap();
+    .ok();
 
     let t = thread::spawn(move || {
         let t = thread::spawn(move || {
@@ -377,21 +393,24 @@ fn start_install_inner(
                 .map_err(|e| DeploykitError::Install(e.to_string()))
         });
 
-        let res = t.join().unwrap();
-
-        match res {
-            Ok(()) => {
-                info!("Install finished");
-                let mut ps = ps.lock().unwrap();
-                *ps = ProgressStatus::Done;
-                drop(ps);
-                Ok(())
-            }
-            Err(e) => {
-                error!("Install failed: {e}");
+        loop {
+            if cancel_install.load(Ordering::SeqCst) {
                 safe_exit_env(root_fd, tmp_dir_clone2);
 
-                Err(e)
+                {
+                    let mut ps = ps.lock().unwrap();
+                    *ps = ProgressStatus::Pending;
+                }
+
+                return;
+            }
+
+            if t.is_finished() {
+                {
+                    let mut ps = ps.lock().unwrap();
+                    *ps = ProgressStatus::Done;
+                    return;
+                }
             }
         }
     });

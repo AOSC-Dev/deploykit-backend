@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use eyre::{bail, Result};
+use serde::Deserialize;
 use serde_json::Value;
 use tokio::time::sleep;
 use tracing::info;
@@ -13,6 +14,18 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter};
 use zbus::Result as zResult;
 use zbus::{dbus_proxy, Connection};
+
+#[derive(Debug, Deserialize)]
+struct Dbus {
+    result: DbusResult,
+    data: Value,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+enum DbusResult {
+    Ok,
+    Error,
+}
 
 #[dbus_proxy(
     interface = "io.aosc.Deploykit1",
@@ -54,6 +67,49 @@ struct Args {
     rtc_as_localtime: bool,
 }
 
+impl TryFrom<String> for Dbus {
+    type Error = eyre::Error;
+
+    fn try_from(value: String) -> std::prelude::v1::Result<Self, <Dbus as TryFrom<String>>::Error> {
+        let res = serde_json::from_str::<Dbus>(&value)?;
+
+        match res.result {
+            DbusResult::Ok => Ok(res),
+            DbusResult::Error => bail!("Failed to execute query: {:?}", res.data),
+        }
+    }
+}
+
+impl Dbus {
+    async fn set_config(proxy: &DeploykitProxy<'_>, field: &str, value: &str) -> Result<Self> {
+        let res = proxy.set_config(field, value).await?;
+        let res = Self::try_from(res)?;
+
+        Ok(res)
+    }
+
+    async fn auto_partition(proxy: &DeploykitProxy<'_>, dev: &str) -> Result<Self> {
+        let res = proxy.auto_partition(dev).await?;
+        let res = Self::try_from(res)?;
+
+        Ok(res)
+    }
+
+    async fn get_progress(proxy: &DeploykitProxy<'_>) -> Result<Self> {
+        let res = proxy.get_progress().await?;
+        let res = Self::try_from(res)?;
+
+        Ok(res)
+    }
+
+    async fn start_install(proxy: &DeploykitProxy<'_>) -> Result<Self> {
+        let res = proxy.start_install().await?;
+        let res = Self::try_from(res)?;
+
+        Ok(res)
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -82,51 +138,41 @@ async fn main() -> Result<()> {
     let connection = Connection::system().await?;
     let proxy = DeploykitProxy::new(&connection).await?;
 
-    proxy
-        .set_config(
-            "download",
-            &serde_json::json!({
-                "Http": {
-                    "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
-                    "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
-                }
-                // "File": "/home/saki/squashfs"
-            })
-            .to_string(),
-        )
-        .await?;
-    proxy.set_config("timezone", &timezone).await?;
-    proxy.set_config("locale", &locale).await?;
-    proxy
-        .set_config("rtc_as_localtime", if rtc_as_localtime { "1" } else { "0" })
-        .await?;
+    Dbus::set_config(&proxy, "download", &serde_json::json!({
+        "Http": {
+            "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
+            "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
+        }
+        // "File": "/home/saki/squashfs"
+    })
+    .to_string()).await?;
 
-    proxy.set_config("hostname", &hostname).await?;
-    proxy
-        .set_config(
-            "user",
-            &serde_json::json! {{
-                "username": &user,
-                "password": &password,
-            }}
-            .to_string(),
-        )
-        .await?;
+    Dbus::set_config(&proxy, "timezone", &timezone).await?;
+    Dbus::set_config(&proxy, "locale", &locale).await?;
+    Dbus::set_config(
+        &proxy,
+        "rtc_as_localtime",
+        if rtc_as_localtime { "1" } else { "0" },
+    )
+    .await?;
 
-    proxy.set_config("swapfile", "\"Disable\"").await?;
+    Dbus::set_config(&proxy, "hostname", &hostname).await?;
+
+    Dbus::set_config(
+        &proxy,
+        "user",
+        &serde_json::json! {{
+            "username": &user,
+            "password": &password,
+        }}
+        .to_string(),
+    )
+    .await?;
+
+    Dbus::set_config(&proxy, "swapfile", "\"Disable\"").await?;
 
     info!("Auto partitioning /dev/loop30...");
-    let result = proxy.auto_partition("/dev/loop30").await?;
-    let result: Value = serde_json::from_str(&result)?;
-
-    if result
-        .get("result")
-        .and_then(|x| x.as_str())
-        .map(|x| x == "ok")
-        .unwrap_or(false)
-    {
-        bail!("Failed to auto partition /dev/loop30: {}", result);
-    }
+    Dbus::auto_partition(&proxy, "/dev/loop30").await?;
 
     println!("{}", proxy.get_config("").await?);
 
@@ -135,12 +181,10 @@ async fn main() -> Result<()> {
 
     let t = tokio::spawn(async move {
         loop {
-            match proxy_clone.get_progress().await {
+            match Dbus::get_progress(&proxy_clone).await {
                 Ok(progress) => {
-                    if progress == "\"Done\"" {
-                        break;
-                    }
-                    println!("Progress: {}", progress);
+                    // if progress.data.get("Progress")
+                    println!("Progress: {:?}", progress);
                 }
                 Err(e) => {
                     eprintln!("Error: {}", e);
@@ -151,8 +195,9 @@ async fn main() -> Result<()> {
         }
     });
 
-    let res = proxy.start_install().await?;
-    println!("{res}");
+    let res = Dbus::start_install(&proxy).await?;
+
+    println!("{:?}", res);
 
     t.await?;
 
