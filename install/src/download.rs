@@ -127,7 +127,14 @@ where
             velocity((v_download_len / 1024) / 1);
             v_download_len = 0;
         }
-        file.write_all(&chunk).await.unwrap();
+
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| InstallError::OperateFile {
+                path: path.display().to_string(),
+                err: e,
+            })?;
+
         progress(download_len as f64 / total_size as f64);
         v.update(&chunk);
         v_download_len += chunk.len();
