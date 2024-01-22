@@ -1,26 +1,24 @@
 use std::{
     fs::File,
-    io::Write,
+    io::{self, Write},
     os::unix::fs::PermissionsExt,
     path::Path,
 };
 
-use rustix::{fd::AsRawFd, fs::FallocateFlags};
+use rustix::{fd::AsRawFd, fs::FallocateFlags, io::Errno};
 use tracing::info;
 
 use crate::{utils::run_command, InstallError};
 
 pub fn get_recommend_swap_size(mem: u64) -> f64 {
     // 1073741824 is 1 * 1024 * 1024 * 1024 (1GiB => 1iB)
-    let swap_size = match mem {
+    match mem {
         x @ ..=1073741824 => (x * 2) as f64,
         x @ 1073741825.. => {
             let x = x as f64;
             x + x.sqrt().round()
         }
-    };
-
-    swap_size
+    }
 }
 
 /// Create swapfile
@@ -42,7 +40,15 @@ pub fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), InstallError> {
         )
     };
 
-    dbg!(res);
+    if res != 0 {
+        return Err(InstallError::OperateFile {
+            path: swap_path.display().to_string(),
+            err: io::Error::new(
+                Errno::from_raw_os_error(res).kind(),
+                "Failed to create swapfile",
+            ),
+        });
+    }
 
     swapfile.flush().map_err(|e| InstallError::OperateFile {
         path: swap_path.display().to_string(),

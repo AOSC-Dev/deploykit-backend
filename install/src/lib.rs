@@ -353,7 +353,7 @@ impl InstallConfig {
         add_new_user(&self.user.username, &self.user.password)?;
 
         if let Some(full_name) = &self.user.full_name {
-            passwd_set_fullname(&full_name, &self.user.username)?;
+            passwd_set_fullname(full_name, &self.user.username)?;
         }
 
         progress(80.0);
@@ -394,39 +394,37 @@ impl InstallConfig {
 
     fn genfatab(&self, tmp_mount_path: &Path) -> Result<(), InstallError> {
         genfstab_to_file(
-            &self
-                .target_partition
+            self.target_partition
                 .path
                 .as_ref()
                 .ok_or(InstallError::PartitionValueIsNone(
                     PartitionNotSetValue::Path,
                 ))?,
-            &self
-                .target_partition
+            self.target_partition
                 .fs_type
                 .as_ref()
                 .ok_or(InstallError::PartitionValueIsNone(
                     PartitionNotSetValue::FsType,
                 ))?,
-            &tmp_mount_path,
+            tmp_mount_path,
             Path::new("/"),
         )?;
 
         if let Some(ref efi_partition) = self.efi_partition {
             genfstab_to_file(
-                &efi_partition
+                efi_partition
                     .path
                     .as_ref()
                     .ok_or(InstallError::PartitionValueIsNone(
                         PartitionNotSetValue::Path,
                     ))?,
-                &efi_partition
+                efi_partition
                     .fs_type
                     .as_ref()
                     .ok_or(InstallError::PartitionValueIsNone(
                         PartitionNotSetValue::FsType,
                     ))?,
-                &tmp_mount_path,
+                tmp_mount_path,
                 Path::new("/efi"),
             )?;
         }
@@ -437,7 +435,7 @@ impl InstallConfig {
     fn mount_partitions(&self, tmp_mount_path: &Path) -> Result<(), InstallError> {
         mount_root_path(
             self.target_partition.path.as_deref(),
-            &tmp_mount_path,
+            tmp_mount_path,
             self.target_partition
                 .fs_type
                 .as_ref()

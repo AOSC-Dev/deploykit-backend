@@ -25,7 +25,7 @@ where
             let to_path = to_path.as_ref().ok_or(InstallError::DownloadPathIsNotSet)?;
             Ok((
                 to_path.clone(),
-                http_download_file(url, &to_path, hash, progress, velocity)?,
+                http_download_file(url, to_path, hash, progress, velocity)?,
             ))
         }
         DownloadType::File(path) => {
@@ -124,7 +124,7 @@ where
     while let Some(chunk) = resp.chunk().await? {
         if now.elapsed().as_secs() >= 1 {
             now = Instant::now();
-            velocity((v_download_len / 1024) / 1);
+            velocity(v_download_len / 1024);
             v_download_len = 0;
         }
 

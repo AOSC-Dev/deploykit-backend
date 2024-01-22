@@ -86,29 +86,20 @@ pub enum ProgressStatus {
 
 impl ProgressStatus {
     fn change_step(&mut self, step: u8) {
-        match self {
-            ProgressStatus::Working(_, progress, v) => {
-                *self = ProgressStatus::Working(step, *progress, *v);
-            }
-            _ => {}
+        if let ProgressStatus::Working(_, progress, v) = self {
+            *self = ProgressStatus::Working(step, *progress, *v);
         }
     }
 
     fn change_progress(&mut self, progress: f64) {
-        match self {
-            ProgressStatus::Working(step, _, v) => {
-                *self = ProgressStatus::Working(*step, progress, *v);
-            }
-            _ => {}
+        if let ProgressStatus::Working(step, _, v) = self {
+            *self = ProgressStatus::Working(*step, progress, *v);
         }
     }
 
     fn change_velocity(&mut self, velocity: usize) {
-        match self {
-            ProgressStatus::Working(step, progress, _) => {
-                *self = ProgressStatus::Working(*step, *progress, velocity);
-            }
-            _ => {}
+        if let ProgressStatus::Working(step, progress, _) = self {
+            *self = ProgressStatus::Working(*step, *progress, velocity);
         }
     }
 }

@@ -37,7 +37,7 @@ pub fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), InstallError> 
         grub_install_args.push(Cow::Borrowed("--bootloader-id=AOSC OS"));
         grub_install_args.extend(
             target
-                .into_iter()
+                .iter()
                 .map(|x| Cow::Borrowed(x.to_owned()))
                 .collect::<Vec<_>>(),
         );
@@ -51,7 +51,7 @@ pub fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), InstallError> 
         .map(|x| x.to_string())
         .collect::<Vec<_>>();
 
-    run_command("grub-install", &grub_install_args)?;
+    run_command("grub-install", grub_install_args)?;
     run_command("grub-mkconfig", ["-o", "/boot/grub/grub.cfg"])?;
 
     Ok(())
