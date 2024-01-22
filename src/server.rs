@@ -368,15 +368,46 @@ fn set_config_inner(
             )),
         },
         "target_partition" => {
-            let p = serde_json::from_str::<DkPartition>(value)
-                .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
-            config.target_partition = Arc::new(Mutex::new(Some(p)));
-            Ok(())
+            #[cfg(not(debug_assertions))]
+            {
+                let p = serde_json::from_str::<DkPartition>(value)
+                    .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+                config.target_partition = Arc::new(Mutex::new(Some(p)));
+                Ok(())
+            }
+            #[cfg(debug_assertions)]
+            {
+                let _p = serde_json::from_str::<DkPartition>(value)
+                    .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+                config.target_partition = Arc::new(Mutex::new(Some(DkPartition {
+                    path: Some(PathBuf::from("/dev/loop30p1")),
+                    parent_path: Some(PathBuf::from("/dev/loop30")),
+                    fs_type: Some("ext4".to_string()),
+                    size: 50 * 1024 * 1024 * 1024,
+                })));
+                Ok(())
+            }
         }
         "efi_partition" => {
-            let p = serde_json::from_str::<DkPartition>(value)
-                .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
-            config.efi_partition = Arc::new(Mutex::new(Some(p)));
+            #[cfg(not(debug_assertions))]
+            {
+                let p = serde_json::from_str::<DkPartition>(value)
+                    .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+                config.efi_partition = Arc::new(Mutex::new(Some(p)));
+            }
+
+            #[cfg(debug_assertions)]
+            {
+                let _p = serde_json::from_str::<DkPartition>(value)
+                    .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+                config.efi_partition = Arc::new(Mutex::new(Some(DkPartition {
+                    path: Some(PathBuf::from("/dev/loop30p2")),
+                    parent_path: Some(PathBuf::from("/dev/loop30")),
+                    fs_type: Some("vfat".to_string()),
+                    size: 512 * 1024 * 1024,
+                })));
+            }
+
             Ok(())
         }
         "swapfile" => {
