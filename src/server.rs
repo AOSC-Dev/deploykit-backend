@@ -169,7 +169,7 @@ impl DeploykitServer {
                 "download" => Message::check_is_set(field, &self.config.download),
                 "user" => Message::check_is_set(field, &self.config.user),
                 "hostname" => Message::check_is_set(field, &self.config.hostname),
-                "rtc_as_localtime" => self.config.rtc_as_localtime.to_string(),
+                "rtc_as_localtime" => Message::ok(&self.config.rtc_as_localtime.to_string()),
                 "target_partition" => Message::check_is_set(field, {
                     let lock = self.config.target_partition.lock().unwrap();
 
