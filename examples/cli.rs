@@ -40,6 +40,7 @@ trait Deploykit {
     async fn get_list_devices(&self) -> zResult<String>;
     async fn auto_partition(&self, dev: &str) -> zResult<String>;
     async fn start_install(&self) -> zResult<String>;
+    async fn get_auto_partition_progress(&self) -> zResult<String>;
 }
 
 #[derive(Parser, Debug)]
@@ -104,6 +105,13 @@ impl Dbus {
 
     async fn start_install(proxy: &DeploykitProxy<'_>) -> Result<Self> {
         let res = proxy.start_install().await?;
+        let res = Self::try_from(res)?;
+
+        Ok(res)
+    }
+
+    async fn get_auto_partition_progress(proxy: &DeploykitProxy<'_>) -> Result<Self> {
+        let res = proxy.get_auto_partition_progress().await?;
         let res = Self::try_from(res)?;
 
         Ok(res)
@@ -174,6 +182,19 @@ async fn main() -> Result<()> {
     info!("Auto partitioning /dev/loop30...");
     Dbus::auto_partition(&proxy, "/dev/loop30").await?;
 
+    // 等待分区工作完成
+    loop {
+        let res = Dbus::get_auto_partition_progress(&proxy).await?;
+        let res = res.data;
+
+        if res.as_str().map(|x| x == "Finish").unwrap_or(false) {
+            break;
+        }
+
+        println!("Working");
+        sleep(Duration::from_millis(10)).await;
+    }
+
     println!("{}", proxy.get_config("").await?);
 
     let proxy = Arc::new(proxy);
@@ -183,7 +204,6 @@ async fn main() -> Result<()> {
         loop {
             match Dbus::get_progress(&proxy_clone).await {
                 Ok(progress) => {
-                    // if progress.data.get("Progress")
                     println!("Progress: {:?}", progress);
                 }
                 Err(e) => {

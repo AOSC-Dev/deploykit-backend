@@ -9,7 +9,7 @@ edition = "2021"
 tokio = { version = "1.35", features = ["rt-multi-thread", "macros"] }
 eyre = "0.6"
 zbus = { version = "3.14", features = ["tokio"] }
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

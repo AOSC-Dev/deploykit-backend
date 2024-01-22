@@ -14,6 +14,7 @@ use std::{
 use disk::{
     devices::list_devices,
     partition::{auto_create_partitions, DkPartition},
+    PartitionError,
 };
 use install::{
     chroot::{escape_chroot, get_dir_fd},
@@ -22,7 +23,7 @@ use install::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use zbus::dbus_interface;
 
 use crate::error::DeploykitError;
@@ -36,7 +37,9 @@ pub struct DeploykitServer {
     progress_tx: Sender<f64>,
     v_tx: Sender<usize>,
     install_thread: Option<JoinHandle<()>>,
+    partition_thread: Option<JoinHandle<()>>,
     cancel_run_install: Arc<AtomicBool>,
+    auto_partition_progress: Arc<Mutex<AutoPartitionProgress>>,
 }
 
 impl Default for DeploykitServer {
@@ -68,7 +71,9 @@ impl Default for DeploykitServer {
             progress_tx,
             v_tx,
             install_thread: None,
+            partition_thread: None,
             cancel_run_install: Arc::new(AtomicBool::new(false)),
+            auto_partition_progress: Arc::new(Mutex::new(AutoPartitionProgress::Pending)),
         }
     }
 }
@@ -77,7 +82,6 @@ impl Default for DeploykitServer {
 pub enum ProgressStatus {
     Pending,
     Working(u8, f64, usize),
-    Done,
 }
 
 impl ProgressStatus {
@@ -155,6 +159,13 @@ impl Message {
     }
 }
 
+#[derive(Debug)]
+pub enum AutoPartitionProgress {
+    Pending,
+    Working,
+    Finish(Option<PartitionError>),
+}
+
 #[dbus_interface(name = "io.aosc.Deploykit1")]
 impl DeploykitServer {
     fn get_config(&self, field: &str) -> String {
@@ -168,8 +179,16 @@ impl DeploykitServer {
                 "user" => Message::check_is_set(field, &self.config.user),
                 "hostname" => Message::check_is_set(field, &self.config.hostname),
                 "rtc_as_localtime" => self.config.rtc_as_localtime.to_string(),
-                "target_partition" => Message::check_is_set(field, &self.config.target_partition),
-                "efi_partition" => Message::check_is_set(field, &self.config.efi_partition),
+                "target_partition" => Message::check_is_set(field, {
+                    let lock = self.config.target_partition.lock().unwrap();
+
+                    &lock.clone()
+                }),
+                "efi_partition" => {
+                    let lock = self.config.efi_partition.lock().unwrap();
+
+                    Message::check_is_set(field, &lock.clone())
+                }
                 "swapfile" => Message::ok(&self.config.swapfile),
                 _ => {
                     error!("Unknown field: {field}");
@@ -213,21 +232,62 @@ impl DeploykitServer {
     }
 
     fn auto_partition(&mut self, dev: &str) -> String {
-        let path = Path::new(dev);
-        let p = auto_create_partitions(path);
-        let s = match p {
-            Ok((efi, p)) => {
-                self.config.efi_partition = efi;
-                self.config.target_partition = Some(p);
-                Message::ok(&"")
-            }
-            Err(e) => {
-                error!("Failed to auto partition: {e}");
-                Message::err(DeploykitError::AutoPartition(e.to_string()))
-            }
-        };
+        let path = PathBuf::from(dev);
+        let efi_arc = self.config.efi_partition.clone();
+        let target_part = self.config.target_partition.clone();
 
-        s
+        {
+            let mut lock = self.auto_partition_progress.lock().unwrap();
+            *lock = AutoPartitionProgress::Working;
+        }
+
+        let auto_partition_progress = self.auto_partition_progress.clone();
+
+        self.partition_thread = Some(thread::spawn(move || {
+            let p = auto_create_partitions(&path);
+
+            match p {
+                Ok((efi, p)) => {
+                    {
+                        let mut lock = efi_arc.lock().unwrap();
+                        *lock = efi;
+                    }
+
+                    {
+                        let mut lock = target_part.lock().unwrap();
+                        *lock = Some(p);
+                    }
+
+                    {
+                        let mut lock = auto_partition_progress.lock().unwrap();
+                        *lock = AutoPartitionProgress::Finish(None);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to auto partition: {e}");
+
+                    {
+                        let mut lock = auto_partition_progress.lock().unwrap();
+                        *lock = AutoPartitionProgress::Finish(Some(e));
+                    }
+                }
+            }
+        }));
+
+        Message::ok(&"")
+    }
+
+    fn get_auto_partition_progress(&self) -> String {
+        let ps = self.auto_partition_progress.lock().unwrap();
+
+        match &*ps {
+            AutoPartitionProgress::Pending => Message::ok(&"Pending"),
+            AutoPartitionProgress::Working => Message::ok(&"Working"),
+            AutoPartitionProgress::Finish(e) => match e {
+                None => Message::ok(&"Finish"),
+                Some(e) => Message::err(DeploykitError::AutoPartition(e.to_string())),
+            },
+        }
     }
 
     fn start_install(&mut self) -> String {
@@ -319,13 +379,13 @@ fn set_config_inner(
         "target_partition" => {
             let p = serde_json::from_str::<DkPartition>(value)
                 .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
-            config.target_partition = Some(p);
+            config.target_partition = Arc::new(Mutex::new(Some(p)));
             Ok(())
         }
         "efi_partition" => {
             let p = serde_json::from_str::<DkPartition>(value)
                 .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
-            config.efi_partition = Some(p);
+            config.efi_partition = Arc::new(Mutex::new(Some(p)));
             Ok(())
         }
         "swapfile" => {
@@ -372,14 +432,20 @@ fn start_install_inner(
         .map_err(|e| DeploykitError::Install(e.to_string()))?;
 
     ctrlc::set_handler(move || {
-        safe_exit_env(root_fd_clone.try_clone().unwrap(), tmp_dir_clone3.clone());
+        if let Ok(root_fd) = root_fd_clone.try_clone() {
+            safe_exit_env(root_fd, tmp_dir_clone3.clone());
+        } else {
+            warn!("Failed to clone root_fd");
+        }
+
         exit(1);
     })
     .ok();
 
     let t = thread::spawn(move || {
+        let (tx, rx) = mpsc::channel();
         let t = thread::spawn(move || {
-            config
+            let res = config
                 .start_install(
                     |step| {
                         step_tx.send(step).unwrap();
@@ -390,7 +456,11 @@ fn start_install_inner(
                     move |v| v_tx.send(v).unwrap(),
                     temp_dir,
                 )
-                .map_err(|e| DeploykitError::Install(e.to_string()))
+                .map_err(|e| DeploykitError::Install(e.to_string()));
+
+            if let Err(e) = res {
+                tx.send(e).unwrap();
+            }
         });
 
         loop {
@@ -407,8 +477,12 @@ fn start_install_inner(
 
             if t.is_finished() {
                 {
+                    if let Ok(e) = rx.recv_timeout(Duration::from_millis(10)) {
+                        error!("Failed to install system: {e:?}");
+                    }
+
                     let mut ps = ps.lock().unwrap();
-                    *ps = ProgressStatus::Done;
+                    *ps = ProgressStatus::Pending;
                     return;
                 }
             }

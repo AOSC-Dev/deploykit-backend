@@ -19,6 +19,6 @@ fstab-generate = "0.1"
 reqwest = "0.11"
 tokio = { version = "1.35", features = ["rt-multi-thread", "fs"] }
 sha2 = "0.10"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 hex = "0.4"
 serde_json = "1.0.111"

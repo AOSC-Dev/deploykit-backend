@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use disk::{
@@ -143,8 +143,8 @@ pub struct InstallConfigPrepare {
     pub rtc_as_localtime: bool,
     pub hostname: Option<String>,
     pub swapfile: SwapFile,
-    pub target_partition: Option<DkPartition>,
-    pub efi_partition: Option<DkPartition>,
+    pub target_partition: Arc<Mutex<Option<DkPartition>>>,
+    pub efi_partition: Arc<Mutex<Option<DkPartition>>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -179,8 +179,8 @@ impl Default for InstallConfigPrepare {
             rtc_as_localtime: false,
             hostname: None,
             swapfile: SwapFile::Automatic,
-            target_partition: None,
-            efi_partition: None,
+            target_partition: Arc::new(Mutex::new(None)),
+            efi_partition: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -219,10 +219,17 @@ impl TryFrom<InstallConfigPrepare> for InstallConfig {
                 .hostname
                 .ok_or(InstallError::IsNotSet(NotSetValue::Hostname))?,
             swapfile: value.swapfile,
-            target_partition: value
-                .target_partition
-                .ok_or(InstallError::IsNotSet(NotSetValue::TargetPartition))?,
-            efi_partition: value.efi_partition,
+            target_partition: {
+                let lock = value.target_partition.lock().unwrap();
+
+                lock.clone()
+                    .ok_or(InstallError::IsNotSet(NotSetValue::TargetPartition))?
+            },
+            efi_partition: {
+                let lock = value.efi_partition.lock().unwrap();
+
+                lock.clone()
+            },
         })
     }
 }
