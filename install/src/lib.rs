@@ -20,6 +20,7 @@ use tracing::info;
 use crate::{
     chroot::{dive_into_guest, escape_chroot, get_dir_fd},
     dracut::execute_dracut,
+    genfstab::write_swap_entry_to_fstab,
     grub::execute_grub_install,
     hostname::set_hostname,
     locale::{set_hwclock_tc, set_locale},
@@ -254,7 +255,6 @@ impl InstallConfig {
 
         progress(50.0);
 
-        // TODO: swap
         match self.swapfile {
             SwapFile::Automatic => {
                 let mut sys = System::new_all();
@@ -327,7 +327,10 @@ impl InstallConfig {
         step(8);
         progress(0.0);
 
-        // TODO: swap
+        if self.swapfile != SwapFile::Disable {
+            write_swap_entry_to_fstab()?;
+        }
+
         progress(25.0);
 
         info!("Setting timezone as {} ...", self.timezone);
@@ -342,7 +345,6 @@ impl InstallConfig {
         progress(75.0);
 
         info!("Setting User ...");
-        // TODO: fummname
         add_new_user(&self.user.username, &self.user.password)?;
 
         if let Some(full_name) = &self.user.full_name {

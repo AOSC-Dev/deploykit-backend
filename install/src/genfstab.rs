@@ -34,6 +34,28 @@ pub fn genfstab_to_file(
 
     Ok(())
 }
+
+/// Must be used in a chroot context
+pub fn write_swap_entry_to_fstab() -> Result<(), InstallError> {
+    let s = "/swapfile none swap defaults,nofail 0 0\n";
+    let mut fstab = std::fs::OpenOptions::new()
+        .append(true)
+        .open("/etc/fstab")
+        .map_err(|e| InstallError::OperateFile {
+            path: "/etc/fstab".to_string(),
+            err: e,
+        })?;
+
+    fstab
+        .write_all(s.as_bytes())
+        .map_err(|e| InstallError::OperateFile {
+            path: "/etc/fstab".to_string(),
+            err: e,
+        })?;
+
+    Ok(())
+}
+
 fn fstab_entries(
     device_path: &Path,
     fs_type: &str,
