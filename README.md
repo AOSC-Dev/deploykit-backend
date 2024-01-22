@@ -4,7 +4,8 @@ AOSC OS Installer (Deploykit) v2.0 backend
 # Usage (test example)
 
 Just run:
-```
+
+```bash
 # Install dbus interface rule file:
 sudo cp ./deploykit-dbus.conf /usr/share/dbus-1/system.d
 
