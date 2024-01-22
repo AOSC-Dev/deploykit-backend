@@ -162,13 +162,6 @@ pub enum SwapFile {
     Disable,
 }
 
-// #[test]
-// fn test() {
-//     let a = SwapFile::Automatic;
-
-//     dbg!(serde_json::to_string(&a).unwrap());
-// }
-
 impl Default for InstallConfigPrepare {
     fn default() -> Self {
         Self {
@@ -469,11 +462,14 @@ impl InstallConfig {
         format_partition(&self.target_partition)?;
 
         if let Some(ref efi) = self.efi_partition {
-            // if efi.fs_type.is_none() {
-            //     // format the un-formatted ESP partition
-            //     efi.fs_type = Some("vfat".to_string());
-            // }
-            format_partition(efi)?;
+            if efi.fs_type.is_none() {
+                // format the un-formatted ESP partition
+                let mut efi = efi.clone();
+                efi.fs_type = Some("vfat".to_string());
+                format_partition(&efi)?;
+            } else {
+                format_partition(efi)?;
+            }
         }
 
         Ok(())
