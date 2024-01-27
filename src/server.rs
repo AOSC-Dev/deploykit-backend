@@ -13,7 +13,7 @@ use std::{
 
 use disk::{
     devices::list_devices,
-    partition::{auto_create_partitions, DkPartition},
+    partition::{auto_create_partitions, list_partitions, DkPartition},
     PartitionError,
 };
 use install::{
@@ -218,6 +218,13 @@ impl DeploykitServer {
                 size: i.sector_size() * i.length(),
             });
         }
+
+        Message::ok(&res)
+    }
+
+    fn get_list_partitions(&self, dev: &str) -> String {
+        let path = PathBuf::from(dev);
+        let res = list_partitions(path);
 
         Message::ok(&res)
     }

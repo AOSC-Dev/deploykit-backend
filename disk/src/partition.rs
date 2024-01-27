@@ -21,6 +21,8 @@ pub struct DkPartition {
     pub size: u64,
 }
 
+const SUPPORT_PARTITION_TYPE: &[&str] = &["primary", "logical"];
+
 pub fn create_parition_table(dev: &Path) -> Result<(), PartitionError> {
     let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
         path: dev.display().to_string(),
@@ -628,4 +630,42 @@ fn remove_part_by_nums(dev: &Path, nums: Vec<u32>) -> Result<(), PartitionError>
     })?;
 
     Ok(())
+}
+
+pub fn list_partitions(device_path: PathBuf) -> Vec<DkPartition> {
+    let mut partitions = Vec::new();
+    if let Ok(mut dev) = Device::new(&device_path) {
+        let sector_size = dev.sector_size();
+        if let Ok(disk) = libparted::Disk::new(&mut dev) {
+            for mut part in disk.parts() {
+                if part.num() < 0 {
+                    continue;
+                }
+
+                let geom_length: i64 = part.geom_length();
+                let part_length = if geom_length < 0 {
+                    0
+                } else {
+                    geom_length as u64
+                };
+
+                let fs_type = if let Ok(type_) = part.get_geom().probe_fs() {
+                    Some(type_.name().to_owned())
+                } else {
+                    None
+                };
+
+                if SUPPORT_PARTITION_TYPE.contains(&part.type_get_name()) {
+                    partitions.push(DkPartition {
+                        path: part.get_path().map(|path| path.to_owned()),
+                        parent_path: Some(device_path.clone()),
+                        size: sector_size * part_length,
+                        fs_type,
+                    });
+                }
+            }
+        }
+    }
+
+    partitions
 }
