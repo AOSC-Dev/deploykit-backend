@@ -8,6 +8,7 @@ use disk::{
     partition::{format_partition, DkPartition},
     PartitionError,
 };
+
 use download::download_file;
 use extract::extract_squashfs;
 use genfstab::genfstab_to_file;
@@ -41,7 +42,7 @@ mod hostname;
 mod locale;
 pub mod mount;
 mod ssh;
-mod swap;
+pub mod swap;
 mod user;
 mod utils;
 mod zoneinfo;

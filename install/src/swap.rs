@@ -22,7 +22,7 @@ pub fn get_recommend_swap_size(mem: u64) -> f64 {
 }
 
 /// Create swapfile
-pub fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), InstallError> {
+pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), InstallError> {
     let swap_path = tempdir.join("swapfile");
 
     info!("Creating swapfile");
@@ -69,6 +69,6 @@ pub fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), InstallError> {
     Ok(())
 }
 
-pub fn swapoff(tempdir: &Path) {
+pub(crate) fn swapoff(tempdir: &Path) {
     run_command("swapoff", [tempdir.join("swapfile")]).ok();
 }

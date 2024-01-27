@@ -17,12 +17,11 @@ use disk::{
     PartitionError,
 };
 use install::{
-    chroot::{escape_chroot, get_dir_fd},
-    mount::{remove_bind_mounts, umount_root_path},
-    DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User,
+    chroot::{escape_chroot, get_dir_fd}, mount::{remove_bind_mounts, umount_root_path}, swap::get_recommend_swap_size, DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sysinfo::System;
 use tracing::{error, info, warn};
 use zbus::dbus_interface;
 
@@ -324,6 +323,23 @@ impl DeploykitServer {
         }
 
         Message::ok(&"")
+    }
+
+    fn get_recommend_swap_size(&self) -> String {
+        let mut sys = System::new_all();
+        sys.refresh_memory();
+        let total_memory = sys.total_memory();
+        let size = get_recommend_swap_size(total_memory);
+
+        Message::ok(&size)
+    }
+
+    fn get_memory(&self) -> String {
+        let mut sys = System::new_all();
+        sys.refresh_memory();
+        let total_memory = sys.total_memory();
+
+        Message::ok(&total_memory)
     }
 }
 

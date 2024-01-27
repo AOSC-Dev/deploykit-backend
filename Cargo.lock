@@ -562,6 +562,7 @@ dependencies = [
  "install",
  "serde",
  "serde_json",
+ "sysinfo",
  "tempfile",
  "thiserror",
  "tokio",

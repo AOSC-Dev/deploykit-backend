@@ -16,6 +16,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1.0"
 tempfile = "3.9"
 ctrlc = "3.4"
+sysinfo = "0.30"
 
 disk = { path = "./disk" }
 install = { path = "./install" }
