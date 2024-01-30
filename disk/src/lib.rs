@@ -37,6 +37,8 @@ pub enum PartitionError {
     SyncDevice { path: String, err: std::io::Error },
     #[error("Could not find partition by sector: {0}")]
     FindSector(u64),
+    #[error("Failed to find esp partition: {path}")]
+    FindEspPartition { path: String, err: std::io::Error }
 }
 
 pub fn is_efi_booted() -> bool {

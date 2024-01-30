@@ -13,11 +13,14 @@ use std::{
 
 use disk::{
     devices::list_devices,
-    partition::{auto_create_partitions, list_partitions, DkPartition},
+    partition::{self, auto_create_partitions, list_partitions, DkPartition},
     PartitionError,
 };
 use install::{
-    chroot::{escape_chroot, get_dir_fd}, mount::{remove_bind_mounts, umount_root_path}, swap::get_recommend_swap_size, DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User
+    chroot::{escape_chroot, get_dir_fd},
+    mount::{remove_bind_mounts, umount_root_path},
+    swap::get_recommend_swap_size,
+    DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -340,6 +343,16 @@ impl DeploykitServer {
         let total_memory = sys.total_memory();
 
         Message::ok(&total_memory)
+    }
+
+    fn find_esp_partition(&self, dev: &str) -> String {
+        let path = Path::new(dev);
+        let res = partition::find_esp_partition(path);
+
+        match res {
+            Ok(p) => Message::ok(&p),
+            Err(e) => Message::err(DeploykitError::FindEspPartition(e.to_string())),
+        }
     }
 }
 

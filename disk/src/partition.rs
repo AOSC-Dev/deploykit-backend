@@ -234,7 +234,7 @@ fn get_partition_table_type(device_path: &Path) -> Result<String, PartitionError
 pub fn auto_create_partitions(
     dev: &Path,
 ) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
-    let mut device = libparted::Device::new(dev).map_err(|e| PartitionError::OpenDevice {
+    let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
         path: dev.display().to_string(),
         err: e,
     })?;
@@ -271,7 +271,7 @@ pub fn auto_create_partitions(
         }
     }
 
-    let mut device = libparted::Device::new(dev).map_err(|e| PartitionError::OpenDevice {
+    let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
         path: dev.display().to_string(),
         err: e,
     })?;
@@ -299,7 +299,7 @@ pub fn auto_create_partitions(
 
     create_parition_table(dev)?;
 
-    let mut device = libparted::Device::new(dev).map_err(|e| PartitionError::OpenDevice {
+    let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
         path: dev.display().to_string(),
         err: e,
     })?;
@@ -668,4 +668,40 @@ pub fn list_partitions(device_path: PathBuf) -> Vec<DkPartition> {
     }
 
     partitions
+}
+
+pub fn find_esp_partition(device_path: &Path) -> Result<DkPartition, PartitionError> {
+    let mut device =
+        Device::get(device_path).map_err(|e| PartitionError::open_device(device_path, e))?;
+    if let Ok(disk) = libparted::Disk::new(&mut device) {
+        for mut part in disk.parts() {
+            if part.num() < 0 {
+                continue;
+            }
+            if part.get_flag(libparted::PartitionFlag::PED_PARTITION_ESP) {
+                let fs_type = if let Ok(type_) = part.get_geom().probe_fs() {
+                    Some(type_.name().to_owned())
+                } else {
+                    None
+                };
+                let path = part
+                    .get_path()
+                    .ok_or_else(|| PartitionError::FindEspPartition {
+                        path: device_path.display().to_string(),
+                        err: io::Error::new(io::ErrorKind::Other, "Unexcept error"),
+                    })?;
+                return Ok(DkPartition {
+                    path: Some(path.to_owned()),
+                    parent_path: None,
+                    size: 0,
+                    fs_type,
+                });
+            }
+        }
+    }
+
+    Err(PartitionError::FindEspPartition {
+        path: device_path.display().to_string(),
+        err: io::Error::new(io::ErrorKind::Other, "Unexcept error"),
+    })
 }

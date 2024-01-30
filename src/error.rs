@@ -16,6 +16,8 @@ pub enum DeploykitError {
     AutoPartition(String),
     #[error("Failed to install system: {0}")]
     Install(String),
+    #[error("Failed to find esp partition: {0}")]
+    FindEspPartition(String),
 }
 
 #[derive(Debug, Serialize)]
