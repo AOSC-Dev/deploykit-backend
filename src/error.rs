@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[derive(Debug, Error, Serialize)]
+#[derive(Debug, Error, Serialize, Deserialize)]
 pub enum DeploykitError {
     #[error("Failed to get field {field}: {error}")]
     GetField {
@@ -20,7 +20,7 @@ pub enum DeploykitError {
     FindEspPartition(String),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum GetFieldErrKind {
     UnknownField,
 }

@@ -84,6 +84,7 @@ impl Default for DeploykitServer {
 pub enum ProgressStatus {
     Pending,
     Working(u8, f64, usize),
+    Error(DeploykitError),
 }
 
 impl ProgressStatus {
@@ -534,15 +535,16 @@ fn start_install_inner(
             }
 
             if t.is_finished() {
-                {
-                    if let Ok(e) = rx.recv_timeout(Duration::from_millis(10)) {
-                        error!("Failed to install system: {e:?}");
-                    }
+                let mut ps = ps.lock().unwrap();
 
-                    let mut ps = ps.lock().unwrap();
-                    *ps = ProgressStatus::Pending;
+                if let Ok(e) = rx.recv_timeout(Duration::from_millis(10)) {
+                    error!("Failed to install system: {e:?}");
+                    *ps = ProgressStatus::Error(e);
                     return;
                 }
+
+                *ps = ProgressStatus::Pending;
+                return;
             }
         }
     });
