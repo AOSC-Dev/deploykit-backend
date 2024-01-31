@@ -362,7 +362,7 @@ impl InstallConfig {
         escape_chroot(owned_root_fd)?;
 
         if self.swapfile != SwapFile::Disable {
-            swapoff(&tmp_mount_path);
+            swapoff(&tmp_mount_path).ok();
         }
 
         info!("Removing bind mounts ...");
