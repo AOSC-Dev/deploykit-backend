@@ -69,6 +69,6 @@ pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), InstallEr
     Ok(())
 }
 
-pub(crate) fn swapoff(tempdir: &Path) -> Result<(), InstallError> {
+pub fn swapoff(tempdir: &Path) -> Result<(), InstallError> {
     run_command("swapoff", [tempdir.join("swapfile")])
 }

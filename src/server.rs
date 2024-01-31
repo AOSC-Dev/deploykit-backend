@@ -19,7 +19,7 @@ use disk::{
 use install::{
     chroot::{escape_chroot, get_dir_fd},
     mount::{remove_bind_mounts, umount_root_path},
-    swap::get_recommend_swap_size,
+    swap::{get_recommend_swap_size, swapoff},
     DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User,
 };
 use serde::{Deserialize, Serialize};
@@ -307,7 +307,7 @@ impl DeploykitServer {
     fn start_install(&mut self) -> String {
         {
             let ps = self.progress.lock().unwrap();
-            if matches!(*ps, ProgressStatus::Working { .. }) {
+            if let ProgressStatus::Working { .. } = *ps {
                 return Message::err("Another installation is working.");
             }
         }
@@ -571,6 +571,7 @@ fn start_install_inner(
 
 fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     escape_chroot(root_fd).ok();
+    swapoff(&tmp_dir).ok();
     remove_bind_mounts(&tmp_dir).ok();
     umount_root_path(&tmp_dir).ok();
 }
