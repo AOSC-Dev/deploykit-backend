@@ -7,9 +7,11 @@ Just run:
 
 ```bash
 # Install dbus interface rule file:
+sudo groupadd -r sysinstall
+sudo usermod -a -G sysinstall USER
 sudo cp ./deploykit-dbus.conf /usr/share/dbus-1/system.d
 
-# Build and run backend:
+# Re-login, Build and run backend:
 cargo build
 sudo ./target/debug/deploykit-backend
 
