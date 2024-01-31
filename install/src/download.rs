@@ -135,7 +135,7 @@ where
                 err: e,
             })?;
 
-        progress(download_len as f64 / total_size as f64);
+        progress((download_len as f64 / total_size as f64 * 100.0).round());
         v.update(&chunk);
         v_download_len += chunk.len();
         download_len += chunk.len();
