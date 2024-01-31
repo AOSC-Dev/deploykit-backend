@@ -361,15 +361,15 @@ impl InstallConfig {
         info!("Escape chroot ...");
         escape_chroot(owned_root_fd)?;
 
+        if self.swapfile != SwapFile::Disable {
+            swapoff(&tmp_mount_path);
+        }
+
         info!("Removing bind mounts ...");
         remove_bind_mounts(&tmp_mount_path)?;
 
         info!("Unmounting filesystems...");
         umount_root_path(&tmp_mount_path)?;
-
-        if self.swapfile != SwapFile::Disable {
-            swapoff(&tmp_mount_path);
-        }
 
         progress(100.0);
 
