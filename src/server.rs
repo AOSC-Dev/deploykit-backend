@@ -81,28 +81,41 @@ impl Default for DeploykitServer {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "status")]
 pub enum ProgressStatus {
     Pending,
-    Working(u8, f64, usize),
+    Working { step: u8, progress: f64, v: usize },
     Error(DeploykitError),
 }
 
 impl ProgressStatus {
     fn change_step(&mut self, step: u8) {
-        if let ProgressStatus::Working(_, progress, v) = self {
-            *self = ProgressStatus::Working(step, *progress, *v);
+        if let ProgressStatus::Working { progress, v, .. } = self {
+            *self = ProgressStatus::Working {
+                step,
+                progress: *progress,
+                v: *v,
+            }
         }
     }
 
     fn change_progress(&mut self, progress: f64) {
-        if let ProgressStatus::Working(step, _, v) = self {
-            *self = ProgressStatus::Working(*step, progress, *v);
+        if let ProgressStatus::Working { step, v, .. } = self {
+            *self = ProgressStatus::Working {
+                step: *step,
+                progress,
+                v: *v,
+            }
         }
     }
 
     fn change_velocity(&mut self, velocity: usize) {
-        if let ProgressStatus::Working(step, progress, _) = self {
-            *self = ProgressStatus::Working(*step, *progress, velocity);
+        if let ProgressStatus::Working { step, progress, .. } = self {
+            *self = ProgressStatus::Working {
+                step: *step,
+                progress: *progress,
+                v: velocity,
+            }
         }
     }
 }
@@ -294,7 +307,7 @@ impl DeploykitServer {
     fn start_install(&mut self) -> String {
         {
             let ps = self.progress.lock().unwrap();
-            if matches!(*ps, ProgressStatus::Working(_, _, _)) {
+            if matches!(*ps, ProgressStatus::Working { .. }) {
                 return Message::err("Another installation is working.");
             }
         }
@@ -313,7 +326,11 @@ impl DeploykitServer {
 
         {
             let mut ps = self.progress.lock().unwrap();
-            *ps = ProgressStatus::Working(0, 0.0, 0);
+            *ps = ProgressStatus::Working {
+                step: 0,
+                progress: 0.0,
+                v: 0,
+            };
         }
 
         Message::ok(&"")
