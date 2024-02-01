@@ -12,6 +12,12 @@ pub fn set_zoneinfo(zone: &str) -> Result<(), InstallError> {
         })?;
     }
 
+    let zone = if zone == "Asia/Beijing" {
+        "Asia/Shanghai"
+    } else {
+        zone
+    };
+
     symlink(format!("/usr/share/zoneinfo/{zone}"), "/etc/localtime").map_err(|e| {
         InstallError::OperateFile {
             path: "/etc/localtime".to_string(),
