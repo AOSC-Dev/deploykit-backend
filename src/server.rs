@@ -86,6 +86,7 @@ pub enum ProgressStatus {
     Pending,
     Working { step: u8, progress: f64, v: usize },
     Error(DeploykitError),
+    Finish,
 }
 
 impl ProgressStatus {
@@ -518,6 +519,8 @@ fn start_install_inner(
     })
     .ok();
 
+    let ps_clone = ps.clone();
+
     let t = thread::spawn(move || {
         let (tx, rx) = mpsc::channel();
         let t = thread::spawn(move || {
@@ -535,7 +538,12 @@ fn start_install_inner(
                 .map_err(|e| DeploykitError::Install(e.to_string()));
 
             if let Err(e) = res {
-                tx.send(e).unwrap();
+                {
+                    let ps = ps_clone.lock().unwrap();
+                    if let ProgressStatus::Working { .. } = *ps {
+                        tx.send(e).expect("Install thread is exit.");
+                    }
+                }
             }
         });
 
@@ -560,7 +568,7 @@ fn start_install_inner(
                     return;
                 }
 
-                *ps = ProgressStatus::Pending;
+                *ps = ProgressStatus::Finish;
                 return;
             }
         }
