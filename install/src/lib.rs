@@ -465,14 +465,9 @@ impl InstallConfig {
         format_partition(&self.target_partition)?;
 
         if let Some(ref efi) = self.efi_partition {
-            if efi.fs_type.is_none() {
-                // format the un-formatted ESP partition
-                let mut efi = efi.clone();
-                efi.fs_type = Some("vfat".to_string());
-                format_partition(&efi)?;
-            } else {
-                format_partition(efi)?;
-            }
+            let mut efi = efi.clone();
+            efi.fs_type = Some("vfat".to_string());
+            format_partition(&efi)?;
         }
 
         Ok(())

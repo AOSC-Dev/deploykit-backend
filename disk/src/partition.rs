@@ -402,16 +402,16 @@ pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
         _ => command.arg("-F"),
     };
 
+    let cmd = cmd.arg(partition.path.as_ref().ok_or_else(|| {
+        PartitionError::FormatPartition(io::Error::new(
+            io::ErrorKind::NotFound,
+            "partition.path is empty",
+        ))
+    })?);
+
     info!("{cmd:?}");
-    let output = cmd
-        .arg(partition.path.as_ref().ok_or_else(|| {
-            PartitionError::FormatPartition(io::Error::new(
-                io::ErrorKind::NotFound,
-                "partition.path is empty",
-            ))
-        })?)
-        .output()
-        .map_err(PartitionError::FormatPartition)?;
+
+    let output = cmd.output().map_err(PartitionError::FormatPartition)?;
 
     if !output.status.success() {
         return Err(PartitionError::FormatPartition(io::Error::new(
