@@ -373,6 +373,16 @@ impl DeploykitServer {
             Err(e) => Message::err(DeploykitError::FindEspPartition(e.to_string())),
         }
     }
+
+    fn disk_is_right_combo(&self, dev: &str) -> String {
+        let path = Path::new(dev);
+        let res = disk::right_combine(path);
+
+        match res {
+            Ok(()) => Message::ok(&""),
+            Err(e) => Message::err(DeploykitError::UnsupportedDiskCombo(e.to_string())),
+        }
+    }
 }
 
 fn set_config_inner(

@@ -196,7 +196,7 @@ where
     Ok(())
 }
 
-fn cvt<T: IsZero>(t: T) -> io::Result<T> {
+pub fn cvt<T: IsZero>(t: T) -> io::Result<T> {
     if t.is_zero() {
         Err(io::Error::last_os_error())
     } else {
@@ -204,7 +204,7 @@ fn cvt<T: IsZero>(t: T) -> io::Result<T> {
     }
 }
 
-fn get_partition_table_type(device_path: &Path) -> Result<String, PartitionError> {
+pub fn get_partition_table_type(device_path: &Path) -> Result<String, PartitionError> {
     let device = Device::new(device_path).map_err(|e| PartitionError::OpenDevice {
         path: device_path.display().to_string(),
         err: e,

@@ -1,4 +1,5 @@
-use std::{io, path::Path};
+use crate::partition::get_partition_table_type;
+use std::{fmt::Display, io, path::Path};
 
 use thiserror::Error;
 
@@ -38,11 +39,51 @@ pub enum PartitionError {
     #[error("Could not find partition by sector: {0}")]
     FindSector(u64),
     #[error("Failed to find esp partition: {path}")]
-    FindEspPartition { path: String, err: std::io::Error }
+    FindEspPartition { path: String, err: std::io::Error },
+    #[error("{path}, unsupport combo: {table} partition table and {bootmode} boot mode")]
+    WrongCombo {
+        table: Table,
+        bootmode: BootMode,
+        path: String,
+    },
+    #[error("Unsupport partition table: {0}")]
+    UnsupportedTable(String),
 }
 
-pub fn is_efi_booted() -> bool {
-    Path::new("/sys/firmware/efi").exists()
+#[derive(Debug)]
+pub enum Table {
+    MBR,
+    GPT,
+}
+
+impl Display for Table {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Display for BootMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl TryFrom<&str> for Table {
+    type Error = PartitionError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "gpt" => Ok(Table::GPT),
+            "msdos" | "mbr" => Ok(Table::MBR),
+            _ => Err(PartitionError::UnsupportedTable(value.to_string())),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum BootMode {
+    BIOS,
+    UEFI,
 }
 
 impl PartitionError {
@@ -66,4 +107,40 @@ impl PartitionError {
             err,
         }
     }
+}
+
+pub fn is_efi_booted() -> bool {
+    Path::new("/sys/firmware/efi").exists()
+}
+
+#[cfg(not(target_arch = "powerpc64"))]
+pub fn right_combine(device_path: &Path) -> Result<(), PartitionError> {
+    let partition_table_t = get_partition_table_type(device_path)?;
+    let is_efi_booted = is_efi_booted();
+    if (partition_table_t == "gpt" && is_efi_booted)
+        || (partition_table_t == "msdos" && !is_efi_booted)
+    {
+        return Ok(());
+    }
+
+    let table = Table::try_from(partition_table_t.as_str())?;
+
+    match table {
+        Table::MBR if is_efi_booted => Err(PartitionError::WrongCombo {
+            table,
+            bootmode: BootMode::UEFI,
+            path: device_path.display().to_string(),
+        }),
+        Table::GPT if !is_efi_booted => Err(PartitionError::WrongCombo {
+            table,
+            bootmode: BootMode::BIOS,
+            path: device_path.display().to_string(),
+        }),
+        _ => Ok(()),
+    }
+}
+
+#[cfg(target_arch = "powerpc64")]
+pub fn right_combine(device_path: Option<&Path>) -> Result<(), PartitionError> {
+    Ok(())
 }

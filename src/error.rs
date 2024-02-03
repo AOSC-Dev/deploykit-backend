@@ -18,6 +18,8 @@ pub enum DeploykitError {
     Install(String),
     #[error("Failed to find esp partition: {0}")]
     FindEspPartition(String),
+    #[error("Unsupport disk combo")]
+    UnsupportedDiskCombo(String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
