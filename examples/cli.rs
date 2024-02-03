@@ -63,6 +63,9 @@ struct Args {
     /// Set default locale (affects display language, units, time/date format etc.)
     #[clap(long, default_value = "C.UTF-8")]
     locale: String,
+    /// Set install disk (will auto partition)
+    #[clap(long)]
+    disk_target: String,
     /// Toggle using RTC (real time clock) time as local time
     #[clap(long, action = clap::ArgAction::SetTrue)]
     rtc_as_localtime: bool,
@@ -128,6 +131,7 @@ async fn main() -> Result<()> {
         timezone,
         locale,
         rtc_as_localtime,
+        disk_target,
     } = args;
 
     let env_log = EnvFilter::try_from_default_env();
@@ -179,8 +183,8 @@ async fn main() -> Result<()> {
 
     Dbus::set_config(&proxy, "swapfile", "\"Disable\"").await?;
 
-    info!("Auto partitioning /dev/loop30...");
-    Dbus::auto_partition(&proxy, "/dev/loop30").await?;
+    info!("Auto partitioning {disk_target}...");
+    Dbus::auto_partition(&proxy, &disk_target).await?;
 
     // 等待分区工作完成
     loop {
