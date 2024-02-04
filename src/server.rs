@@ -12,7 +12,10 @@ use std::{
 };
 
 use disk::{
-    devices::list_devices, is_efi_booted, partition::{self, auto_create_partitions, list_partitions, DkPartition}, PartitionError
+    devices::list_devices,
+    is_efi_booted,
+    partition::{self, auto_create_partitions, list_partitions, DkPartition},
+    PartitionError,
 };
 use install::{
     chroot::{escape_chroot, get_dir_fd},
@@ -165,11 +168,14 @@ impl Message {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(tag = "status")]
 pub enum AutoPartitionProgress {
     Pending,
     Working,
-    Finish(Option<PartitionError>),
+    Finish {
+        res: Result<(Option<DkPartition>, DkPartition), PartitionError>,
+    },
 }
 
 #[dbus_interface(name = "io.aosc.Deploykit1")]
@@ -245,7 +251,12 @@ impl DeploykitServer {
     }
 
     fn auto_partition(&mut self, dev: &str) -> String {
-        let path = PathBuf::from(dev);
+        let path = if cfg!(debug_assertions) {
+            PathBuf::from("/dev/loop30")
+        } else {
+            PathBuf::from(dev)
+        };
+
         let efi_arc = self.config.efi_partition.clone();
         let target_part = self.config.target_partition.clone();
 
@@ -263,17 +274,17 @@ impl DeploykitServer {
                 Ok((efi, p)) => {
                     {
                         let mut lock = efi_arc.lock().unwrap();
-                        *lock = efi;
+                        *lock = efi.clone();
                     }
 
                     {
                         let mut lock = target_part.lock().unwrap();
-                        *lock = Some(p);
+                        *lock = Some(p.clone());
                     }
 
                     {
                         let mut lock = auto_partition_progress.lock().unwrap();
-                        *lock = AutoPartitionProgress::Finish(None);
+                        *lock = AutoPartitionProgress::Finish { res: Ok((efi, p)) };
                     }
                 }
                 Err(e) => {
@@ -281,7 +292,7 @@ impl DeploykitServer {
 
                     {
                         let mut lock = auto_partition_progress.lock().unwrap();
-                        *lock = AutoPartitionProgress::Finish(Some(e));
+                        *lock = AutoPartitionProgress::Finish { res: Err(e) };
                     }
                 }
             }
@@ -294,12 +305,11 @@ impl DeploykitServer {
         let ps = self.auto_partition_progress.lock().unwrap();
 
         match &*ps {
-            AutoPartitionProgress::Pending => Message::ok(&"Pending"),
-            AutoPartitionProgress::Working => Message::ok(&"Working"),
-            AutoPartitionProgress::Finish(e) => match e {
-                None => Message::ok(&"Finish"),
-                Some(e) => Message::err(DeploykitError::AutoPartition(e.to_string())),
+            AutoPartitionProgress::Finish { res } => match res {
+                Ok(_) => Message::ok(&*ps),
+                Err(e) => Message::err(DeploykitError::AutoPartition(e.to_string())),
             },
+            _ => Message::ok(&*ps),
         }
     }
 

@@ -1,6 +1,7 @@
 use crate::partition::get_partition_table_type;
 use std::{fmt::Display, io, path::Path};
 
+use serde::Serialize;
 use thiserror::Error;
 
 pub mod devices;
@@ -48,6 +49,14 @@ pub enum PartitionError {
     },
     #[error("Unsupport partition table: {0}")]
     UnsupportedTable(String),
+}
+
+impl Serialize for PartitionError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer {
+        serializer.serialize_str(&self.to_string())
+    }
 }
 
 #[derive(Debug)]
