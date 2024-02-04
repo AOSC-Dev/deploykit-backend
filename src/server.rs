@@ -12,9 +12,7 @@ use std::{
 };
 
 use disk::{
-    devices::list_devices,
-    partition::{self, auto_create_partitions, list_partitions, DkPartition},
-    PartitionError,
+    devices::list_devices, is_efi_booted, partition::{self, auto_create_partitions, list_partitions, DkPartition}, PartitionError
 };
 use install::{
     chroot::{escape_chroot, get_dir_fd},
@@ -386,6 +384,10 @@ impl DeploykitServer {
 
     fn ping(&self) -> String {
         Message::ok(&"pong")
+    }
+
+    fn is_efi(&self) -> String {
+        Message::ok(&is_efi_booted())
     }
 }
 
