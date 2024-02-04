@@ -383,6 +383,10 @@ impl DeploykitServer {
             Err(e) => Message::err(DeploykitError::UnsupportedDiskCombo(e.to_string())),
         }
     }
+
+    fn ping(&self) -> String {
+        Message::ok(&"pong")
+    }
 }
 
 fn set_config_inner(
