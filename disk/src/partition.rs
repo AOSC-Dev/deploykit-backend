@@ -399,7 +399,7 @@ pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
     let cmd = match fs_type.as_str() {
         "ext4" => command.arg("-Fq"),
         "vfat" => command.arg("-F32"),
-        _ => command.arg("-F"),
+        _ => command.arg("-f"),
     };
 
     let cmd = cmd.arg(partition.path.as_ref().ok_or_else(|| {
