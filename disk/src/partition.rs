@@ -26,6 +26,7 @@ pub struct DkPartition {
 
 const SUPPORT_PARTITION_TYPE: &[&str] = &["primary", "logical"];
 const EFI: Uuid = uuid!("C12A7328-F81F-11D2-BA4B-00A0C93EC93B");
+const LINUX_FS: Uuid = uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4");
 
 pub fn create_parition_table(dev: &Path) -> Result<(), PartitionError> {
     let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
@@ -750,7 +751,7 @@ pub fn auto_create_partitions_gptman(
     let system_ending_lba = sector - mmod + starting_lba - 1;
 
     gpt[1] = gptman::GPTPartitionEntry {
-        partition_type_guid: [0xff; 16],
+        partition_type_guid: LINUX_FS.to_bytes_le(),
         unique_partition_guid: generate_random_uuid(),
         starting_lba,
         ending_lba: system_ending_lba,
