@@ -49,6 +49,8 @@ pub enum PartitionError {
     },
     #[error("Unsupport partition table: {0}")]
     UnsupportedTable(String),
+    #[error(transparent)]
+    GptMan(#[from] gptman::Error),
 }
 
 impl Serialize for PartitionError {

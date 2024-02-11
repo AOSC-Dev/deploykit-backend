@@ -1,15 +1,18 @@
 use std::{
     ffi::CStr,
-    io,
+    fs, io,
     path::{Path, PathBuf},
     process::Command,
 };
 
 use disk_types::{BlockDeviceExt, FileSystem, PartitionExt, PartitionType};
+use gptman::GPT;
 use libparted::{Device, Disk, DiskType, FileSystemType, Geometry, IsZero, Partition};
 use libparted_sys::{PedPartitionFlag, PedPartitionType};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
+use uuid::{uuid, Uuid};
 
 use crate::{is_efi_booted, PartitionError};
 
@@ -22,6 +25,7 @@ pub struct DkPartition {
 }
 
 const SUPPORT_PARTITION_TYPE: &[&str] = &["primary", "logical"];
+const EFI: Uuid = uuid!("C12A7328-F81F-11D2-BA4B-00A0C93EC93B");
 
 pub fn create_parition_table(dev: &Path) -> Result<(), PartitionError> {
     let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
@@ -713,4 +717,83 @@ pub fn find_esp_partition(device_path: &Path) -> Result<DkPartition, PartitionEr
         path: device_path.display().to_string(),
         err: io::Error::new(io::ErrorKind::Other, "Unexcept error"),
     })
+}
+
+#[cfg(debug_assertions)]
+pub fn auto_create_partitions_gptman(
+    device_path: &Path,
+) -> Result<(DkPartition, DkPartition), PartitionError> {
+    let mut f = fs::File::open(device_path).map_err(|e| PartitionError::OpenDevice {
+        path: device_path.display().to_string(),
+        err: e,
+    })?;
+
+    let gpt = GPT::find_from(&mut f)?;
+    let sector_size = gpt.sector_size;
+
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .open(device_path)
+        .map_err(|e| PartitionError::OpenDevice {
+            path: device_path.display().to_string(),
+            err: e,
+        })?;
+
+    let mut gpt = GPT::new_from(&mut f, sector_size, generate_random_uuid())?;
+
+    let starting_lba = 1024 * 1024 / sector_size;
+    let efi_size = 512 * 1024 * 1024;
+
+    let sector = gpt.header.last_usable_lba - efi_size / sector_size;
+    // 需要取整
+    let mmod = sector % (1024 * 1024 / sector_size);
+    let system_ending_lba = sector - mmod + starting_lba - 1;
+
+    gpt[1] = gptman::GPTPartitionEntry {
+        partition_type_guid: [0xff; 16],
+        unique_partition_guid: generate_random_uuid(),
+        starting_lba,
+        ending_lba: system_ending_lba,
+        attribute_bits: 0,
+        partition_name: "".into(),
+    };
+
+    let efi_starting_lba = system_ending_lba + 1;
+
+    let mmod = (gpt.header.last_usable_lba - efi_starting_lba) % (1024 * 1024 / sector_size);
+    let ending_lba = gpt.header.last_usable_lba - mmod - 1;
+
+    gpt[2] = gptman::GPTPartitionEntry {
+        partition_type_guid: EFI.to_bytes_le(),
+        unique_partition_guid: generate_random_uuid(),
+        starting_lba: efi_starting_lba,
+        ending_lba,
+        attribute_bits: 0,
+        partition_name: "".into(),
+    };
+
+    gpt.write_into(&mut f)?;
+
+    let system = DkPartition {
+        path: Some(PathBuf::from("/dev/loop30p1")),
+        parent_path: Some(device_path.to_path_buf()),
+        fs_type: Some("ext4".to_string()),
+        size: gpt.header.primary_lba * sector_size,
+    };
+
+    let efi = DkPartition {
+        path: Some(PathBuf::from("/dev/loop30p2")),
+        parent_path: Some(device_path.to_path_buf()),
+        fs_type: Some("vfat".to_string()),
+        size: 512 * 1024_u64.pow(2),
+    };
+
+    format_partition(&system)?;
+    format_partition(&efi)?;
+
+    Ok((efi, system))
+}
+
+fn generate_random_uuid() -> [u8; 16] {
+    rand::thread_rng().gen()
 }
