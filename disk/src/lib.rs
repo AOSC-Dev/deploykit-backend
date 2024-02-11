@@ -38,7 +38,7 @@ pub enum PartitionError {
     #[error("Failed to sync device {path}: {err}")]
     SyncDevice { path: String, err: std::io::Error },
     #[error("Could not find partition by sector: {0}")]
-    FindSector(u64),
+    FindSector(i64),
     #[error("Failed to find esp partition: {path}")]
     FindEspPartition { path: String, err: std::io::Error },
     #[error("{path}, unsupport combo: {table} partition table and {bootmode} boot mode")]

@@ -242,7 +242,6 @@ pub fn auto_create_partitions(
     let device = &mut device as *mut Device;
     let device = unsafe { &mut (*device) };
     let efi_size = 512 * 1024 * 1024;
-    let partition_table_end_size = 1024 * 1024;
     let is_efi = is_efi_booted();
 
     let length = device.length();
@@ -307,10 +306,12 @@ pub fn auto_create_partitions(
     let device = &mut device as *mut Device;
     let device = unsafe { &mut (*device) };
 
+    let start_sector = 1024 * 1024 / sector_size;
+
     let system_end_sector = if is_efi {
-        length - (efi_size + partition_table_end_size) / sector_size
+        length - efi_size / sector_size + start_sector
     } else {
-        length - partition_table_end_size / sector_size
+        length + start_sector
     };
 
     let mut flags = vec![];
@@ -321,7 +322,7 @@ pub fn auto_create_partitions(
 
     let system = &PartitionCreate {
         path: dev.to_path_buf(),
-        start_sector: 2048,
+        start_sector,
         end_sector: system_end_sector,
         format: true,
         file_system: Some(FileSystem::Ext4),
@@ -345,11 +346,17 @@ pub fn auto_create_partitions(
     format_partition(&p)?;
 
     let efi = if is_efi {
-        let start_sector = length - (partition_table_end_size + efi_size) / sector_size + 1;
+        let start_sector = system_end_sector;
+
+        // Ref: https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_entries_(LBA_2%E2%80%9333)
+        let last_usable_sector = length - 34;
+
+        let mmod = (last_usable_sector - start_sector) % (1024 * 1024 / 512);
+
         let efi = &PartitionCreate {
             path: dev.to_path_buf(),
             start_sector,
-            end_sector: length - partition_table_end_size / sector_size,
+            end_sector: last_usable_sector - mmod,
             format: true,
             file_system: Some(FileSystem::Fat32),
             kind: PartitionType::Primary,
@@ -505,11 +512,14 @@ pub fn auto_create_partitions(
     let device = &mut device as *mut Device;
     let mut device = unsafe { &mut (*device) };
 
+    let start_sector = 1024 * 1024 / sector_size;
+    let end_sector = start_sector + (512 * 1024 * 1024 / device.sector_size());
+
     if is_efi {
         let efi = &PartitionCreate {
             path: dev.to_path_buf(),
-            start_sector: 2048,
-            end_sector: 2048 + (512 * 1024 * 1024 / device.sector_size()),
+            start_sector,
+            end_sector,
             format: true,
             file_system: Some(FileSystem::Fat32),
             kind: PartitionType::Primary,
@@ -523,12 +533,6 @@ pub fn auto_create_partitions(
         create_partition(&mut device, efi).map_err(|e| PartitionError::create_partition(dev, e))?;
     }
 
-    let start_sector = if is_efi {
-        2048 + (512 * 1024 * 1024 / sector_size) + 1
-    } else {
-        2048 + 1
-    };
-
     let mut flags = vec![];
 
     if !is_efi {
@@ -536,11 +540,16 @@ pub fn auto_create_partitions(
     }
 
     let length = device.length();
+    let system_start_sector = if is_efi { end_sector } else { start_sector };
+
+    // Ref: https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_entries_(LBA_2%E2%80%9333)
+    let last_usable_sector = device.length() - 34;
+    let mmod = (last_usable_sector - system_start_sector) % (1024 * 1024 / sector_size);
 
     let system = &PartitionCreate {
         path: dev.to_path_buf(),
         start_sector,
-        end_sector: device.length() - 1 * 1024 * 1024 / sector_size,
+        end_sector: last_usable_sector - mmod,
         format: true,
         file_system: Some(FileSystem::Ext4),
         kind: PartitionType::Primary,
@@ -560,8 +569,8 @@ pub fn auto_create_partitions(
 
     let efi = if is_efi {
         let part_efi = disk
-            .get_partition_by_sector(2048)
-            .ok_or_else(|| PartitionError::FindSector(2048))?;
+            .get_partition_by_sector(start_sector as i64)
+            .ok_or_else(|| PartitionError::FindSector(start_sector as i64))?;
 
         let geom_length = part_efi.geom_length();
         let part_length = if geom_length < 0 {
