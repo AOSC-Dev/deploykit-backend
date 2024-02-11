@@ -729,6 +729,8 @@ pub fn auto_create_partitions_gptman(
         err: e,
     })?;
 
+    // 先获取扇区大小
+    // 下面创建新的分区表时需要这个参数
     let gpt = GPT::find_from(&mut f)?;
     let sector_size = gpt.sector_size;
 
@@ -740,13 +742,20 @@ pub fn auto_create_partitions_gptman(
             err: e,
         })?;
 
+    // 创建新的分区表
     let mut gpt = GPT::new_from(&mut f, sector_size, generate_random_uuid())?;
-
+    
+    // 起始扇区为 1MiB 除以扇区大小
     let starting_lba = 1024 * 1024 / sector_size;
-    let efi_size = 512 * 1024 * 1024;
 
+    // EFI 的大小
+    let efi_size = 512 * 1024 * 1024;
+    
+    // 系统分区
+    // 所经历的扇区数为最后一个有用的扇区减去 efi 扇区
     let sector = gpt.header.last_usable_lba - efi_size / sector_size;
-    // 需要取整
+    
+    // 需要取整以保证对齐，最终得到系统分区的末尾扇区
     let mmod = sector % (1024 * 1024 / sector_size);
     let system_ending_lba = sector - mmod + starting_lba - 1;
 
@@ -764,6 +773,7 @@ pub fn auto_create_partitions_gptman(
     let mmod = (gpt.header.last_usable_lba - efi_starting_lba) % (1024 * 1024 / sector_size);
     let ending_lba = gpt.header.last_usable_lba - mmod - 1;
 
+    // EFI 分区
     gpt[2] = gptman::GPTPartitionEntry {
         partition_type_guid: EFI.to_bytes_le(),
         unique_partition_guid: generate_random_uuid(),
@@ -773,6 +783,7 @@ pub fn auto_create_partitions_gptman(
         partition_name: "".into(),
     };
 
+    // 应用分区表的修改
     gpt.write_into(&mut f)?;
 
     let system = DkPartition {
