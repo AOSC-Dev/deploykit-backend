@@ -548,7 +548,7 @@ pub fn auto_create_partitions(
 
     let system = &PartitionCreate {
         path: dev.to_path_buf(),
-        start_sector,
+        start_sector: system_start_sector,
         end_sector: last_usable_sector - mmod,
         format: true,
         file_system: Some(FileSystem::Ext4),
