@@ -287,217 +287,6 @@ pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
     Ok(())
 }
 
-#[cfg(not(debug_assertions))]
-pub fn auto_create_partitions(
-    dev: &Path,
-) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
-    let mut device = Device::new(dev).map_err(|e| PartitionError::open_device(dev, e))?;
-
-    let device = &mut device as *mut Device;
-    let device = unsafe { &mut (*device) };
-
-    let is_efi = is_efi_booted();
-    let sector_size = device.sector_size();
-
-    let size = device.length() * sector_size;
-
-    if get_partition_table_type(dev)
-        .map(|x| x == "msdos")
-        .unwrap_or(false)
-        && size > 512 * (2_u64.pow(31) - 1)
-    {
-        return Err(PartitionError::MBRMaxSizeLimit(dev.display().to_string()));
-    }
-
-    if let Ok(disk) = Disk::new(&mut *device) {
-        info!("Disk already exists, open disk and remove existing partitions");
-        let mut nums = vec![];
-
-        // 先删除主分区
-        let primarys = disk.parts().filter(|x| x.type_get_name() == "primary");
-
-        for i in primarys {
-            let num = i.num();
-            if num > 0 {
-                nums.push(num as u32);
-            }
-        }
-
-        remove_part_by_nums(dev, nums)?;
-
-        let mut device = Device::new(dev).map_err(|e| PartitionError::open_device(dev, e))?;
-
-        let device = &mut device as *mut Device;
-        let device = unsafe { &mut (*device) };
-        let disk = Disk::new(&mut *device).map_err(|e| PartitionError::open_disk(dev, e))?;
-
-        // 再删除逻辑分区
-        let logical = disk.parts().filter(|x| x.type_get_name() == "logical");
-
-        let mut nums = vec![];
-        for i in logical {
-            let num = i.num();
-            if num > 0 {
-                nums.push(num as u32);
-            }
-        }
-
-        remove_part_by_nums(dev, nums)?;
-
-        let mut device = Device::new(dev).map_err(|e| PartitionError::open_device(dev, e))?;
-        let device = &mut device as *mut Device;
-        let device = unsafe { &mut (*device) };
-        let disk = Disk::new(&mut *device).map_err(|e| PartitionError::open_disk(dev, e))?;
-
-        let mut nums = vec![];
-        for i in disk.parts() {
-            let num = i.num();
-            if num > 0 {
-                nums.push(num as u32);
-            }
-        }
-
-        // 再删除其他分区
-        remove_part_by_nums(dev, nums)?;
-    } else {
-        info!("Disk does not exists, creating new ...");
-    }
-
-    create_parition_table(dev)?;
-
-    let mut device = Device::new(dev).map_err(|e| PartitionError::open_device(dev, e))?;
-    let device = &mut device as *mut Device;
-    let mut device = unsafe { &mut (*device) };
-
-    let start_sector = 1024 * 1024 / sector_size;
-    let end_sector = start_sector + (512 * 1024 * 1024 / device.sector_size());
-
-    if is_efi {
-        let efi = &PartitionCreate {
-            path: dev.to_path_buf(),
-            start_sector,
-            end_sector,
-            format: true,
-            file_system: Some(FileSystem::Fat32),
-            kind: PartitionType::Primary,
-            flags: vec![
-                PedPartitionFlag::PED_PARTITION_BOOT,
-                PedPartitionFlag::PED_PARTITION_ESP,
-            ],
-            label: None,
-        };
-
-        create_partition(&mut device, efi).map_err(|e| PartitionError::create_partition(dev, e))?;
-    }
-
-    let mut flags = vec![];
-
-    if !is_efi {
-        flags.push(PedPartitionFlag::PED_PARTITION_BOOT);
-    }
-
-    let length = device.length();
-    let system_start_sector = if is_efi { end_sector } else { start_sector };
-
-    // Ref: https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_entries_(LBA_2%E2%80%9333)
-    let last_usable_sector = device.length() - 34;
-    let mmod = (last_usable_sector - system_start_sector) % (1024 * 1024 / sector_size);
-
-    let system = &PartitionCreate {
-        path: dev.to_path_buf(),
-        start_sector: system_start_sector,
-        end_sector: last_usable_sector - mmod,
-        format: true,
-        file_system: Some(FileSystem::Ext4),
-        kind: PartitionType::Primary,
-        flags,
-        label: None,
-    };
-
-    create_partition(&mut device, system).map_err(|e| PartitionError::create_partition(dev, e))?;
-
-    let disk = Disk::new(&mut device).map_err(|e| PartitionError::open_disk(dev, e))?;
-    let mut last = None;
-    for p in disk.parts() {
-        if let Some(path) = p.get_path() {
-            last = Some(path.to_path_buf());
-        }
-    }
-
-    let efi = if is_efi {
-        let part_efi = disk
-            .get_partition_by_sector(start_sector as i64)
-            .ok_or_else(|| PartitionError::FindSector(start_sector as i64))?;
-
-        let geom_length = part_efi.geom_length();
-        let part_length = if geom_length < 0 {
-            0
-        } else {
-            geom_length as u64
-        };
-
-        let p = DkPartition {
-            path: part_efi.get_path().map(|x| x.to_path_buf()),
-            parent_path: Some(dev.to_path_buf()),
-            fs_type: Some("vfat".to_string()),
-            size: part_length * sector_size,
-        };
-
-        format_partition(&p)?;
-
-        Some(p)
-    } else {
-        None
-    };
-
-    let p = last.ok_or_else(|| PartitionError::CreatePartition {
-        path: dev.display().to_string(),
-        err: io::Error::new(io::ErrorKind::Other, "Unexcept error"),
-    })?;
-
-    let p = DkPartition {
-        path: Some(p),
-        parent_path: Some(dev.to_path_buf()),
-        fs_type: Some("ext4".to_owned()),
-        size: (length - start_sector) * sector_size,
-    };
-
-    format_partition(&p)?;
-
-    Ok((efi, p))
-}
-
-#[cfg(not(debug_assertions))]
-fn remove_part_by_nums(dev: &Path, nums: Vec<u32>) -> Result<(), PartitionError> {
-    let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
-        path: dev.display().to_string(),
-        err: e,
-    })?;
-
-    let device = &mut device as *mut Device;
-    let device = unsafe { &mut (*device) };
-    let mut disk = Disk::new(&mut *device).map_err(|e| PartitionError::OpenDisk {
-        path: dev.display().to_string(),
-        err: e,
-    })?;
-
-    for i in nums {
-        disk.remove_partition_by_number(i)
-            .map_err(|e| PartitionError::RemovePartition {
-                path: dev.display().to_string(),
-                number: i,
-                err: e,
-            })?;
-    }
-
-    disk.commit().map_err(|e| PartitionError::CommitChanges {
-        path: dev.display().to_string(),
-        err: e,
-    })?;
-
-    Ok(())
-}
-
 pub fn list_partitions(device_path: PathBuf) -> Vec<DkPartition> {
     let mut partitions = Vec::new();
     if let Ok(mut dev) = Device::new(&device_path) {
@@ -575,8 +364,6 @@ pub fn find_esp_partition(device_path: &Path) -> Result<DkPartition, PartitionEr
 pub fn auto_create_partitions_gpt(
     device_path: &Path,
 ) -> Result<(DkPartition, DkPartition), PartitionError> {
-    let sector_size = get_sector_size(device_path)?;
-
     let mut f = fs::OpenOptions::new()
         .write(true)
         .open(device_path)
@@ -585,10 +372,12 @@ pub fn auto_create_partitions_gpt(
             err: e,
         })?;
 
+    let sector_size = gptman::linux::get_sector_size(&mut f).map_err(PartitionError::GetTable)?;
+
     // 创建新的分区表
     let mut gpt = GPT::new_from(&mut f, sector_size, generate_gpt_random_uuid())?;
 
-    // 写一个假的 MBR 保护分区
+    // 写一个假的 MBR 保护分区头
     write_protective_mbr_into(&mut f, sector_size).unwrap();
 
     // 起始扇区为 1MiB 除以扇区大小
@@ -603,32 +392,81 @@ pub fn auto_create_partitions_gpt(
     // 应用分区表的修改
     gpt.write_into(&mut f)?;
 
-    gptman::linux::reread_partition_table(&mut f).map_err(PartitionError::ReloadTable)?;
+    // 重新读取分区表以读取刚刚的修改
+    gptman::linux::reread_partition_table(&mut f).map_err(PartitionError::GetTable)?;
+    
+    // 使用 libparted 便利分区表，找到分区路径并格式化
+    // TODO: 自己实现设备路径寻找逻辑，彻底扔掉 libparted
+    let mut device =
+        libparted::Device::new(device_path).map_err(|e| PartitionError::OpenDevice {
+            path: device_path.display().to_string(),
+            err: e,
+        })?;
 
-    let system = DkPartition {
-        path: Some(PathBuf::from("/dev/loop30p1")),
-        parent_path: Some(device_path.to_path_buf()),
-        fs_type: Some("ext4".to_string()),
-        size: gpt.header.primary_lba * sector_size,
-    };
+    let disk = Disk::new(&mut device).map_err(|e| PartitionError::OpenDisk {
+        path: device_path.display().to_string(),
+        err: e,
+    })?;
 
-    let efi = DkPartition {
-        path: Some(PathBuf::from("/dev/loop30p2")),
-        parent_path: Some(device_path.to_path_buf()),
-        fs_type: Some("vfat".to_string()),
-        size: 512 * 1024_u64.pow(2),
-    };
+    let mut efi = None;
+    let mut system = None;
 
-    format_partition(&system)?;
-    format_partition(&efi)?;
+    for i in disk.parts() {
+        if i.num() < 0 {
+            continue;
+        }
+
+        if i.get_flag(PedPartitionFlag::PED_PARTITION_ESP) {
+            let e = DkPartition {
+                path: i.get_path().map(|x| x.to_path_buf()),
+                parent_path: Some(device_path.to_path_buf()),
+                fs_type: Some("vfat".to_string()),
+                size: match i.geom_length() {
+                    ..=0 => 0,
+                    x @ 1.. => x as u64 * sector_size,
+                },
+            };
+
+            format_partition(&e)?;
+            efi = Some(e);
+
+            continue;
+        }
+
+        let s = DkPartition {
+            path: i.get_path().map(|x| x.to_path_buf()),
+            parent_path: Some(device_path.to_path_buf()),
+            fs_type: Some("ext4".to_string()),
+            size: match i.geom_length() {
+                ..=0 => 0,
+                x @ 1.. => x as u64 * sector_size,
+            },
+        };
+
+        format_partition(&s)?;
+        system = Some(s);
+    }
+
+    let efi = efi.ok_or_else(|| PartitionError::CreatePartition {
+        path: device_path.display().to_string(),
+        err: io::Error::new(
+            io::ErrorKind::NotFound,
+            "Failed to find created esp partition",
+        ),
+    })?;
+
+    let system: DkPartition = system.ok_or_else(|| PartitionError::CreatePartition {
+        path: device_path.display().to_string(),
+        err: io::Error::new(
+            io::ErrorKind::NotFound,
+            "Failed to find created system partition",
+        ),
+    })?;
 
     Ok((efi, system))
 }
 
-#[cfg(debug_assertions)]
 pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, PartitionError> {
-    let sector_size = get_sector_size(device_path)? as u32;
-
     let mut f = fs::OpenOptions::new()
         .write(true)
         .open(device_path)
@@ -637,7 +475,10 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
             err: e,
         })?;
 
-    let mut mbr = MBR::new_from(&mut f, sector_size, disk_signature())?;
+    let sector_size =
+        gptman::linux::get_sector_size(&mut f).map_err(PartitionError::GetTable)? as u32;
+
+    let mut mbr = MBR::new_from(&mut f, sector_size, mbr_disk_signature())?;
 
     let sectors = mbr.get_maximum_partition_size()?;
     let starting_lba = mbr
@@ -655,11 +496,36 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
 
     mbr.write_into(&mut f)?;
 
+    // TODO: 自己实现设备路径寻找逻辑，彻底扔掉 libparted
+    let mut device =
+        libparted::Device::new(device_path).map_err(|e| PartitionError::OpenDevice {
+            path: device_path.display().to_string(),
+            err: e,
+        })?;
+
+    let disk = Disk::new(&mut device).map_err(|e| PartitionError::OpenDisk {
+        path: device_path.display().to_string(),
+        err: e,
+    })?;
+
+    let part = disk.parts().filter(|x| x.num() > 0).next().ok_or_else(|| {
+        PartitionError::CreatePartition {
+            path: device_path.display().to_string(),
+            err: io::Error::new(
+                io::ErrorKind::NotFound,
+                "Failed to find created system partition",
+            ),
+        }
+    })?;
+
     let system = DkPartition {
-        path: Some(PathBuf::from("/dev/loop30p1")),
+        path: part.get_path().map(|x| x.to_path_buf()),
         parent_path: Some(device_path.to_path_buf()),
         fs_type: Some("ext4".to_string()),
-        size: mbr.disk_size as u64,
+        size: match part.geom_length() {
+            ..=0 => 0,
+            x @ 1.. => x as u64 * sector_size as u64,
+        },
     };
 
     format_partition(&system)?;
@@ -671,44 +537,8 @@ fn generate_gpt_random_uuid() -> [u8; 16] {
     rand::thread_rng().gen()
 }
 
-fn disk_signature() -> [u8; 4] {
+fn mbr_disk_signature() -> [u8; 4] {
     rand::thread_rng().gen()
-}
-
-fn get_sector_size(dev: &Path) -> Result<u64, PartitionError> {
-    let device_name = dev
-        .file_name()
-        .map(|x| x.to_string_lossy())
-        .ok_or_else(|| PartitionError::OpenDevice {
-            path: dev.display().to_string(),
-            err: io::Error::new(io::ErrorKind::NotFound, "Failed to get device name"),
-        })?;
-
-    let path = Path::new("/sys/class/block/")
-        .join(device_name.to_string())
-        .join("queue/logical_block_size");
-
-    let size = fs::read_to_string(path)
-        .map_err(|e| PartitionError::OpenDevice {
-            path: dev.display().to_string(),
-            err: e,
-        })?
-        .trim()
-        .parse::<u64>()
-        .map_err(|e| PartitionError::OpenDevice {
-            path: dev.display().to_string(),
-            err: io::Error::new(io::ErrorKind::InvalidData, e),
-        })?;
-
-    Ok(size)
-}
-
-pub fn wipe(device: &Path) -> io::Result<()> {
-    std::process::Command::new("wipefs")
-        .arg("-a")
-        .arg(device)
-        .output()
-        .map(|_| ())
 }
 
 pub fn write_protective_mbr_into<W: ?Sized>(
@@ -776,6 +606,33 @@ fn gpt_partition(gpt: &mut GPT, efi_size: u64, sector_size: u64, starting_lba: u
         partition_type_guid: EFI.to_bytes_le(),
         unique_partition_guid: generate_gpt_random_uuid(),
         starting_lba: efi_starting_lba,
+        ending_lba,
+        attribute_bits: 0,
+        partition_name: "".into(),
+    };
+}
+
+#[cfg(not(debug_assertions))]
+fn gpt_partition(gpt: &mut GPT, efi_size: u64, sector_size: u64, starting_lba: u64) {
+    let efi_ending_lba = efi_size / sector_size + starting_lba - 1;
+    gpt[1] = gptman::GPTPartitionEntry {
+        partition_type_guid: EFI.to_bytes_le(),
+        unique_partition_guid: generate_gpt_random_uuid(),
+        starting_lba,
+        ending_lba: efi_ending_lba,
+        attribute_bits: 0,
+        partition_name: "".into(),
+    };
+
+    let system_starting_lba = efi_ending_lba + 1;
+
+    let mmod = (gpt.header.last_usable_lba - system_starting_lba) % (1024 * 1024 / sector_size);
+    let ending_lba = gpt.header.last_usable_lba - mmod - 1;
+
+    gpt[2] = gptman::GPTPartitionEntry {
+        partition_type_guid: LINUX_FS.to_bytes_le(),
+        unique_partition_guid: generate_gpt_random_uuid(),
+        starting_lba: system_starting_lba,
         ending_lba,
         attribute_bits: 0,
         partition_name: "".into(),

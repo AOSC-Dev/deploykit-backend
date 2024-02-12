@@ -57,7 +57,7 @@ pub enum PartitionError {
     #[error("Failed to get optimal place")]
     GetOptimalPlace,
     #[error("Failed to reload table")]
-    ReloadTable(BlockError),
+    GetTable(BlockError),
 }
 
 impl Serialize for PartitionError {
