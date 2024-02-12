@@ -64,7 +64,6 @@ pub fn get_partition_table_type(device_path: &Path) -> Result<String, PartitionE
     Ok(partition_t)
 }
 
-#[cfg(debug_assertions)]
 pub fn auto_create_partitions(
     dev: &Path,
 ) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {

@@ -246,12 +246,6 @@ impl InstallConfig {
         progress(0.0);
 
         self.format_partitions()?;
-
-        progress(100.0);
-
-        step(2);
-        progress(0.0);
-
         self.mount_partitions(&tmp_mount_path)?;
 
         progress(50.0);
@@ -270,10 +264,16 @@ impl InstallConfig {
             SwapFile::Disable => {}
         }
 
+        progress(100.0);
+
+        step(2);
+        progress(0.0);
+
         let progress_arc = Arc::new(progress);
         let velocity_arc = Arc::new(velocity);
         let progress = progress_arc.clone();
         let velocity = velocity_arc.clone();
+        
         let (squashfs_path, total_size) =
             download_file(&self.download, progress_arc, velocity_arc)?;
 
