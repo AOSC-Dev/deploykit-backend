@@ -1,10 +1,8 @@
 use std::path::Path;
 
 use fancy_regex::Regex;
-use libparted::{Device, Disk};
+use libparted::Device;
 use tracing::info;
-
-use crate::PartitionError;
 
 pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
     Device::devices(true).filter(|dev| {
@@ -44,20 +42,4 @@ fn device_is_match(path: &Path, pattern: &str) -> bool {
                 .and_then(|dev| x.is_match(dev).ok())
         })
         .unwrap_or(false)
-}
-
-pub fn device_is_empty(dev: &Path) -> Result<bool, PartitionError> {
-    let mut device = Device::new(dev).map_err(|e| PartitionError::OpenDevice {
-        path: dev.display().to_string(),
-        err: e,
-    })?;
-
-    let disk = Disk::new(&mut device).map_err(|e| PartitionError::OpenDisk {
-        path: dev.display().to_string(),
-        err: e,
-    })?;
-
-    let mut parts = disk.parts();
-
-    Ok(parts.all(|x| x.get_path().is_none()))
 }

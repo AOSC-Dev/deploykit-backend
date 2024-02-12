@@ -18,7 +18,6 @@ pub fn genfstab_to_file(
 
     let s = fstab_entries(partition_path, fs_type, Some(mount_path))?;
     let mut f = std::fs::OpenOptions::new()
-        .write(true)
         .append(true)
         .open(root_path.join("etc/fstab"))
         .map_err(|e| InstallError::OperateFile {
