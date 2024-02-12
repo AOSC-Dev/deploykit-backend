@@ -572,7 +572,6 @@ pub fn find_esp_partition(device_path: &Path) -> Result<DkPartition, PartitionEr
     })
 }
 
-#[cfg(debug_assertions)]
 pub fn auto_create_partitions_gpt(
     device_path: &Path,
 ) -> Result<(DkPartition, DkPartition), PartitionError> {
@@ -598,37 +597,8 @@ pub fn auto_create_partitions_gpt(
     // EFI 的大小
     let efi_size = 512 * 1024 * 1024;
 
-    // 系统分区
-    // 所经历的扇区数为最后一个有用的扇区减去 efi 扇区
-    let sector = gpt.header.last_usable_lba - efi_size / sector_size;
-
-    // 需要取整以保证对齐，最终得到系统分区的末尾扇区
-    let mmod = sector % (1024 * 1024 / sector_size);
-    let system_ending_lba = sector - mmod + starting_lba - 1;
-
-    gpt[1] = gptman::GPTPartitionEntry {
-        partition_type_guid: LINUX_FS.to_bytes_le(),
-        unique_partition_guid: generate_gpt_random_uuid(),
-        starting_lba,
-        ending_lba: system_ending_lba,
-        attribute_bits: 0,
-        partition_name: "".into(),
-    };
-
-    let efi_starting_lba = system_ending_lba + 1;
-
-    let mmod = (gpt.header.last_usable_lba - efi_starting_lba) % (1024 * 1024 / sector_size);
-    let ending_lba = gpt.header.last_usable_lba - mmod - 1;
-
-    // EFI 分区
-    gpt[2] = gptman::GPTPartitionEntry {
-        partition_type_guid: EFI.to_bytes_le(),
-        unique_partition_guid: generate_gpt_random_uuid(),
-        starting_lba: efi_starting_lba,
-        ending_lba,
-        attribute_bits: 0,
-        partition_name: "".into(),
-    };
+    // 分区方案
+    gpt_partition(&mut gpt, efi_size, sector_size, starting_lba);
 
     // 应用分区表的修改
     gpt.write_into(&mut f)?;
@@ -775,4 +745,39 @@ where
     writer.write_all(&[0x55, 0xaa])?; // signature
 
     Ok(())
+}
+
+#[cfg(debug_assertions)]
+fn gpt_partition(gpt: &mut GPT, efi_size: u64, sector_size: u64, starting_lba: u64) {
+    // 系统分区
+    // 所经历的扇区数为最后一个有用的扇区减去 efi 扇区
+    let sector = gpt.header.last_usable_lba - efi_size / sector_size;
+
+    // 需要取整以保证对齐，最终得到系统分区的末尾扇区
+    let mmod = sector % (1024 * 1024 / sector_size);
+    let system_ending_lba = sector - mmod + starting_lba - 1;
+
+    gpt[1] = gptman::GPTPartitionEntry {
+        partition_type_guid: LINUX_FS.to_bytes_le(),
+        unique_partition_guid: generate_gpt_random_uuid(),
+        starting_lba,
+        ending_lba: system_ending_lba,
+        attribute_bits: 0,
+        partition_name: "".into(),
+    };
+
+    let efi_starting_lba = system_ending_lba + 1;
+
+    let mmod = (gpt.header.last_usable_lba - efi_starting_lba) % (1024 * 1024 / sector_size);
+    let ending_lba = gpt.header.last_usable_lba - mmod - 1;
+
+    // EFI 分区
+    gpt[2] = gptman::GPTPartitionEntry {
+        partition_type_guid: EFI.to_bytes_le(),
+        unique_partition_guid: generate_gpt_random_uuid(),
+        starting_lba: efi_starting_lba,
+        ending_lba,
+        attribute_bits: 0,
+        partition_name: "".into(),
+    };
 }
