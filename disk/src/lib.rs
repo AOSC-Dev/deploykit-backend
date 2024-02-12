@@ -16,30 +16,14 @@ pub enum PartitionError {
     OpenDevice { path: String, err: std::io::Error },
     #[error("Failed to open disk {path}: {err}")]
     OpenDisk { path: String, err: std::io::Error },
-    #[error("Failed to create partition table {path}: {err}")]
-    NewPartitionTable { path: String, err: std::io::Error },
-    #[error("Failed to commit partition table {path}: {err}")]
-    CommitChanges { path: String, err: std::io::Error },
     #[error("Failed to Get partition type {path}: {err}")]
     GetPartitionType { path: String, err: std::io::Error },
     #[error(transparent)]
     Utf8(#[from] std::str::Utf8Error),
-    #[error("Failed to create partition: {0}, partition size must less than 2TiB")]
-    MBRMaxSizeLimit(String),
-    #[error("Failed to remove partition: {path}, number: {number}: {err}")]
-    RemovePartition {
-        path: String,
-        number: u32,
-        err: std::io::Error,
-    },
     #[error("Failed to create partition: {path}: {err}")]
     CreatePartition { path: String, err: std::io::Error },
     #[error("Failed to format partition: {0}")]
     FormatPartition(std::io::Error),
-    #[error("Failed to sync device {path}: {err}")]
-    SyncDevice { path: String, err: std::io::Error },
-    #[error("Could not find partition by sector: {0}")]
-    FindSector(i64),
     #[error("Failed to find esp partition: {path}")]
     FindEspPartition { path: String, err: std::io::Error },
     #[error("{path}, unsupport combo: {table} partition table and {bootmode} boot mode")]

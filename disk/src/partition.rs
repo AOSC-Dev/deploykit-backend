@@ -320,6 +320,7 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
     };
 
     mbr.write_into(&mut f)?;
+    drop(f);
 
     // TODO: 自己实现设备路径寻找逻辑，彻底扔掉 libparted
     let mut device =
