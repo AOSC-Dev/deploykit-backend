@@ -1,6 +1,7 @@
 use crate::partition::get_partition_table_type;
 use std::{fmt::Display, io, path::Path};
 
+use gptman::linux::BlockError;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -51,6 +52,12 @@ pub enum PartitionError {
     UnsupportedTable(String),
     #[error(transparent)]
     GptMan(#[from] gptman::Error),
+    #[error(transparent)]
+    MbrMan(#[from] mbrman::Error),
+    #[error("Failed to get optimal place")]
+    GetOptimalPlace,
+    #[error("Failed to reload table")]
+    ReloadTable(BlockError),
 }
 
 impl Serialize for PartitionError {

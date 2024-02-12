@@ -1,14 +1,17 @@
 use std::{
     ffi::CStr,
-    fs, io,
+    fs,
+    io::{self, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::Command,
 };
 
+use bincode::serialize_into;
 use disk_types::{BlockDeviceExt, FileSystem, PartitionExt, PartitionType};
 use gptman::GPT;
 use libparted::{Device, Disk, DiskType, FileSystemType, Geometry, IsZero, Partition};
 use libparted_sys::{PedPartitionFlag, PedPartitionType};
+use mbrman::MBR;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
@@ -721,7 +724,7 @@ pub fn find_esp_partition(device_path: &Path) -> Result<DkPartition, PartitionEr
 }
 
 #[cfg(debug_assertions)]
-pub fn auto_create_partitions_gptman(
+pub fn auto_create_partitions_gpt(
     device_path: &Path,
 ) -> Result<(DkPartition, DkPartition), PartitionError> {
     let sector_size = get_sector_size(device_path)?;
@@ -735,7 +738,10 @@ pub fn auto_create_partitions_gptman(
         })?;
 
     // 创建新的分区表
-    let mut gpt = GPT::new_from(&mut f, sector_size, generate_random_uuid())?;
+    let mut gpt = GPT::new_from(&mut f, sector_size, generate_gpt_random_uuid())?;
+
+    // 写一个假的 MBR 保护分区
+    write_protective_mbr_into(&mut f, sector_size).unwrap();
 
     // 起始扇区为 1MiB 除以扇区大小
     let starting_lba = 1024 * 1024 / sector_size;
@@ -753,7 +759,7 @@ pub fn auto_create_partitions_gptman(
 
     gpt[1] = gptman::GPTPartitionEntry {
         partition_type_guid: LINUX_FS.to_bytes_le(),
-        unique_partition_guid: generate_random_uuid(),
+        unique_partition_guid: generate_gpt_random_uuid(),
         starting_lba,
         ending_lba: system_ending_lba,
         attribute_bits: 0,
@@ -768,7 +774,7 @@ pub fn auto_create_partitions_gptman(
     // EFI 分区
     gpt[2] = gptman::GPTPartitionEntry {
         partition_type_guid: EFI.to_bytes_le(),
-        unique_partition_guid: generate_random_uuid(),
+        unique_partition_guid: generate_gpt_random_uuid(),
         starting_lba: efi_starting_lba,
         ending_lba,
         attribute_bits: 0,
@@ -777,6 +783,8 @@ pub fn auto_create_partitions_gptman(
 
     // 应用分区表的修改
     gpt.write_into(&mut f)?;
+
+    gptman::linux::reread_partition_table(&mut f).map_err(PartitionError::ReloadTable)?;
 
     let system = DkPartition {
         path: Some(PathBuf::from("/dev/loop30p1")),
@@ -798,7 +806,53 @@ pub fn auto_create_partitions_gptman(
     Ok((efi, system))
 }
 
-fn generate_random_uuid() -> [u8; 16] {
+#[cfg(debug_assertions)]
+pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, PartitionError> {
+    let sector_size = get_sector_size(device_path)? as u32;
+
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .open(device_path)
+        .map_err(|e| PartitionError::OpenDevice {
+            path: device_path.display().to_string(),
+            err: e,
+        })?;
+
+    let mut mbr = MBR::new_from(&mut f, sector_size, disk_signature())?;
+
+    let sectors = mbr.get_maximum_partition_size()?;
+    let starting_lba = mbr
+        .find_optimal_place(sectors)
+        .ok_or_else(|| PartitionError::GetOptimalPlace)?;
+
+    mbr[1] = mbrman::MBRPartitionEntry {
+        boot: mbrman::BOOT_INACTIVE,     // boot flag
+        first_chs: mbrman::CHS::empty(), // first CHS address (only useful for old computers)
+        sys: 0x83,                       // Linux filesystem
+        last_chs: mbrman::CHS::empty(),  // last CHS address (only useful for old computers)
+        starting_lba,                    // the sector where the partition starts
+        sectors,                         // the number of sectors in that partition
+    };
+
+    mbr.write_into(&mut f)?;
+
+    let system = DkPartition {
+        path: Some(PathBuf::from("/dev/loop30p1")),
+        parent_path: Some(device_path.to_path_buf()),
+        fs_type: Some("ext4".to_string()),
+        size: mbr.disk_size as u64,
+    };
+
+    format_partition(&system)?;
+
+    Ok(system)
+}
+
+fn generate_gpt_random_uuid() -> [u8; 16] {
+    rand::thread_rng().gen()
+}
+
+fn disk_signature() -> [u8; 4] {
     rand::thread_rng().gen()
 }
 
@@ -828,4 +882,48 @@ fn get_sector_size(dev: &Path) -> Result<u64, PartitionError> {
         })?;
 
     Ok(size)
+}
+
+pub fn wipe(device: &Path) -> io::Result<()> {
+    std::process::Command::new("wipefs")
+        .arg("-a")
+        .arg(device)
+        .output()
+        .map(|_| ())
+}
+
+pub fn write_protective_mbr_into<W: ?Sized>(
+    mut writer: &mut W,
+    sector_size: u64,
+) -> bincode::Result<()>
+where
+    W: Write + Seek,
+{
+    let size = writer.seek(SeekFrom::End(0))? / sector_size - 1;
+    writer.seek(SeekFrom::Start(446))?;
+    // partition 1
+    writer.write_all(&[
+        0x00, // status
+        0x00, 0x02, 0x00, // CHS address of first absolute sector
+        0xee, // partition type
+        0xff, 0xff, 0xff, // CHS address of last absolute sector
+        0x01, 0x00, 0x00, 0x00, // LBA of first absolute sector
+    ])?;
+
+    // number of sectors in partition 1
+    serialize_into(
+        &mut writer,
+        &(if size > u64::from(u32::max_value()) {
+            u32::max_value()
+        } else {
+            size as u32
+        }),
+    )?;
+
+    writer.write_all(&[0; 16])?; // partition 2
+    writer.write_all(&[0; 16])?; // partition 3
+    writer.write_all(&[0; 16])?; // partition 4
+    writer.write_all(&[0x55, 0xaa])?; // signature
+
+    Ok(())
 }
