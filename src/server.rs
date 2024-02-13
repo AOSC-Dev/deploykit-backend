@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sysinfo::System;
 use tracing::{error, info, warn};
-use zbus::dbus_interface;
+use zbus::interface;
 
 use crate::error::DeploykitError;
 
@@ -178,7 +178,7 @@ pub enum AutoPartitionProgress {
     },
 }
 
-#[dbus_interface(name = "io.aosc.Deploykit1")]
+#[interface(name = "io.aosc.Deploykit1")]
 impl DeploykitServer {
     fn get_config(&self, field: &str) -> String {
         if field.is_empty() {
