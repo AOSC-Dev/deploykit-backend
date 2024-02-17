@@ -466,8 +466,10 @@ impl InstallConfig {
 
         if let Some(ref efi) = self.efi_partition {
             let mut efi = efi.clone();
-            efi.fs_type = Some("vfat".to_string());
-            format_partition(&efi)?;
+            if efi.fs_type.is_none() {
+                efi.fs_type = Some("vfat".to_string());
+                format_partition(&efi)?;
+            }
         }
 
         Ok(())

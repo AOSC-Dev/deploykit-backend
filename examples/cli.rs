@@ -13,7 +13,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter};
 use zbus::Result as zResult;
-use zbus::{dbus_proxy, Connection};
+use zbus::{proxy, Connection};
 
 #[derive(Debug, Deserialize)]
 struct Dbus {
@@ -27,7 +27,7 @@ enum DbusResult {
     Error,
 }
 
-#[dbus_proxy(
+#[proxy(
     interface = "io.aosc.Deploykit1",
     default_service = "io.aosc.Deploykit",
     default_path = "/io/aosc/Deploykit"
