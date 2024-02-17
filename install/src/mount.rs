@@ -94,5 +94,5 @@ pub fn remove_bind_mounts(root: &Path) -> Result<(), InstallError> {
         })?;
     }
 
-    Ok(())
+    Ok(())  
 }

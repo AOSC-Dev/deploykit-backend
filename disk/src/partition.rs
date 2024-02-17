@@ -9,14 +9,13 @@ use std::{
 use bincode::serialize_into;
 use gptman::GPT;
 use libparted::{Device, Disk, IsZero};
-use libparted_sys::PedPartitionFlag;
 use mbrman::MBR;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use uuid::{uuid, Uuid};
 
-use crate::{is_efi_booted, PartitionError};
+use crate::{devices::list_devices, is_efi_booted, PartitionError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DkPartition {
@@ -241,7 +240,7 @@ pub fn auto_create_partitions_gpt(
             continue;
         }
 
-        if i.get_flag(PedPartitionFlag::PED_PARTITION_ESP) {
+        if i.get_flag(libparted::PartitionFlag::PED_PARTITION_ESP) {
             let e = DkPartition {
                 path: i.get_path().map(|x| x.to_path_buf()),
                 parent_path: Some(device_path.to_path_buf()),
@@ -464,4 +463,61 @@ fn gpt_partition(gpt: &mut GPT, efi_size: u64, sector_size: u64, starting_lba: u
         attribute_bits: 0,
         partition_name: "".into(),
     };
+}
+
+pub fn all_esp_partitions() -> Vec<DkPartition> {
+    let devices = list_devices();
+    let mut dev_path_and_sector = vec![];
+
+    for dev in devices {
+        let path = dev.path();
+        if let Some(gpt) = fs::File::open(path)
+            .ok()
+            .and_then(|mut x| GPT::find_from(&mut x).ok())
+        {
+            for (_, c) in gpt.iter() {
+                if c.partition_type_guid == EFI.to_bytes_le() {
+                    dev_path_and_sector.push((path.to_path_buf(), c.starting_lba));
+                }
+            }
+        }
+    }
+
+    dbg!(&dev_path_and_sector);
+
+    let mut res = vec![];
+
+    for (path, lba) in dev_path_and_sector {
+        if let Ok(mut d) = Device::new(&path) {
+            let sector_size = d.sector_size();
+
+            if let Ok(disk) = Disk::new(&mut d) {
+                let part = disk.get_partition_by_sector(lba as i64);
+
+                if let Some(mut part) = part {
+                    res.push(DkPartition {
+                        path: part.get_path().map(|x| x.to_path_buf()),
+                        parent_path: Some(path),
+                        fs_type: part
+                            .get_geom()
+                            .probe_fs()
+                            .ok()
+                            .map(|x| x.name().to_string()),
+                        size: match part.geom_length() {
+                            ..=0 => 0,
+                            x @ 1.. => x as u64 * sector_size,
+                        },
+                    });
+                }
+            }
+        }
+    }
+
+    res
+}
+
+#[test]
+fn test_all_esp_partitions() {
+    let esps = all_esp_partitions();
+    dbg!(esps);
 }

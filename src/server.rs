@@ -14,7 +14,7 @@ use std::{
 use disk::{
     devices::list_devices,
     is_efi_booted,
-    partition::{self, auto_create_partitions, list_partitions, DkPartition},
+    partition::{self, all_esp_partitions, auto_create_partitions, list_partitions, DkPartition},
     PartitionError,
 };
 use install::{
@@ -250,6 +250,10 @@ impl DeploykitServer {
         Message::ok(&res)
     }
 
+    fn get_all_esp_partitions(&self) -> String {
+        Message::ok(&all_esp_partitions())
+    }
+
     fn auto_partition(&mut self, dev: &str) -> String {
         let path = if cfg!(debug_assertions) {
             PathBuf::from("/dev/loop30")
@@ -289,7 +293,6 @@ impl DeploykitServer {
                 }
                 Err(e) => {
                     error!("Failed to auto partition: {e}");
-
                     {
                         let mut lock = auto_partition_progress.lock().unwrap();
                         *lock = AutoPartitionProgress::Finish { res: Err(e) };
