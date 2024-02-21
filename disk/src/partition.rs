@@ -483,8 +483,6 @@ pub fn all_esp_partitions() -> Vec<DkPartition> {
         }
     }
 
-    dbg!(&dev_path_and_sector);
-
     let mut res = vec![];
 
     for (path, lba) in dev_path_and_sector {
@@ -514,10 +512,4 @@ pub fn all_esp_partitions() -> Vec<DkPartition> {
     }
 
     res
-}
-
-#[test]
-fn test_all_esp_partitions() {
-    let esps = all_esp_partitions();
-    dbg!(esps);
 }
