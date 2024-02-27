@@ -348,6 +348,13 @@ impl DeploykitServer {
         Message::ok(&"")
     }
 
+    fn reset_progress_status(&mut self) -> String {
+        let mut ps = self.progress.lock().unwrap();
+        *ps = ProgressStatus::Pending;
+
+        Message::ok(&"")
+    }
+
     fn cancel_install(&mut self) -> String {
         if self.install_thread.is_some() {
             self.cancel_run_install.store(true, Ordering::SeqCst);
@@ -611,4 +618,5 @@ fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     swapoff(&tmp_dir).ok();
     remove_bind_mounts(&tmp_dir).ok();
     umount_root_path(&tmp_dir).ok();
+    
 }
