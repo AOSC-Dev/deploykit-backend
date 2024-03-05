@@ -51,9 +51,13 @@ pub fn umount_root_path(root: &Path) -> Result<(), InstallError> {
         err: io::Error::new(e.kind(), e.to_string()),
     })?;
 
-    rustix::fs::sync();
+    sync_disk();
 
     Ok(())
+}
+
+pub fn sync_disk() {
+    rustix::fs::sync();
 }
 
 /// Setup all the necessary bind mounts

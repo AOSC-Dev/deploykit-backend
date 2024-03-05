@@ -19,7 +19,7 @@ use disk::{
 };
 use install::{
     chroot::{escape_chroot, get_dir_fd},
-    mount::{remove_bind_mounts, umount_root_path},
+    mount::{remove_bind_mounts, sync_disk, umount_root_path},
     swap::{get_recommend_swap_size, swapoff},
     DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User,
 };
@@ -408,6 +408,12 @@ impl DeploykitServer {
 
     fn is_efi(&self) -> String {
         Message::ok(&is_efi_booted())
+    }
+
+    fn sync_disk(&self) -> String {
+        sync_disk();
+
+        Message::ok(&"")
     }
 }
 
