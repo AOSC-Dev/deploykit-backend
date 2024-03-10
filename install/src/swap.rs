@@ -70,5 +70,11 @@ pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), InstallEr
 }
 
 pub fn swapoff(tempdir: &Path) -> Result<(), InstallError> {
-    run_command("swapoff", [tempdir.join("swapfile")])
+    let swapfile_path = tempdir.join("swapfile");
+
+    if !swapfile_path.is_file() {
+        return Ok(())
+    }
+
+    run_command("swapoff", [swapfile_path])
 }

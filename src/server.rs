@@ -552,7 +552,9 @@ fn start_install_inner(
 
     ctrlc::set_handler(move || {
         if let Ok(root_fd) = root_fd_clone.try_clone() {
-            safe_exit_env(root_fd, tmp_dir_clone3.clone()).unwrap();
+            if let Err(e) = safe_exit_env(root_fd, tmp_dir_clone3.clone()) {
+                error!("{e}");
+            }
         } else {
             warn!("Failed to clone root_fd");
         }
@@ -591,7 +593,9 @@ fn start_install_inner(
 
         loop {
             if cancel_install.load(Ordering::SeqCst) {
-                safe_exit_env(root_fd, tmp_dir_clone2).unwrap();
+                if let Err(e) = safe_exit_env(root_fd, tmp_dir_clone2) {
+                    error!("{e}");
+                }
 
                 {
                     let mut ps = ps.lock().unwrap();
@@ -620,17 +624,9 @@ fn start_install_inner(
 }
 
 fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) -> Result<(), DeploykitError> {
-    let mut retry_escape_chroot = 1;
     sync_disk();
 
-    while let Err(e) = escape_chroot(root_fd.try_clone().unwrap()) {
-        if retry_escape_chroot == 5 {
-            return Err(DeploykitError::EscapeEnvironment(e.to_string()));
-        }
-        retry_escape_chroot += 1;
-        sync_disk();
-        thread::sleep(Duration::from_secs(5));
-    }
+    escape_chroot(root_fd.try_clone().unwrap()).ok();
 
     let mut retry_swapoff = 1;
     sync_disk();
@@ -644,29 +640,11 @@ fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) -> Result<(), DeploykitErro
         thread::sleep(Duration::from_secs(5));
     }
 
-    let mut retry_bind_mounts = 1;
+    sync_disk();
+    remove_bind_mounts(&tmp_dir).ok();
     sync_disk();
 
-    while let Err(e) = remove_bind_mounts(&tmp_dir) {
-        if retry_bind_mounts == 5 {
-            return Err(DeploykitError::EscapeEnvironment(e.to_string()));
-        }
-        retry_bind_mounts += 1;
-        sync_disk();
-        thread::sleep(Duration::from_secs(5));
-    }
-
-    let mut retry_umount_root_path = 1;
-    sync_disk();
-
-    while let Err(e) = umount_root_path(&tmp_dir) {
-        if retry_umount_root_path == 5 {
-            return Err(DeploykitError::EscapeEnvironment(e.to_string()));
-        }
-        retry_umount_root_path += 1;
-        sync_disk();
-        thread::sleep(Duration::from_secs(5));
-    }
+    umount_root_path(&tmp_dir).ok();
 
     Ok(())
 }
