@@ -552,7 +552,7 @@ fn start_install_inner(
 
     ctrlc::set_handler(move || {
         if let Ok(root_fd) = root_fd_clone.try_clone() {
-            safe_exit_env(root_fd, tmp_dir_clone3.clone());
+            safe_exit_env(root_fd, tmp_dir_clone3.clone()).unwrap();
         } else {
             warn!("Failed to clone root_fd");
         }
@@ -591,7 +591,7 @@ fn start_install_inner(
 
         loop {
             if cancel_install.load(Ordering::SeqCst) {
-                safe_exit_env(root_fd, tmp_dir_clone2);
+                safe_exit_env(root_fd, tmp_dir_clone2).unwrap();
 
                 {
                     let mut ps = ps.lock().unwrap();
@@ -619,10 +619,54 @@ fn start_install_inner(
     Ok(t)
 }
 
-fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
-    escape_chroot(root_fd).ok();
-    swapoff(&tmp_dir).ok();
-    remove_bind_mounts(&tmp_dir).ok();
-    umount_root_path(&tmp_dir).ok();
-    
+fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) -> Result<(), DeploykitError> {
+    let mut retry_escape_chroot = 1;
+    sync_disk();
+
+    while let Err(e) = escape_chroot(root_fd.try_clone().unwrap()) {
+        if retry_escape_chroot == 5 {
+            return Err(DeploykitError::EscapeEnvironment(e.to_string()));
+        }
+        retry_escape_chroot += 1;
+        sync_disk();
+        thread::sleep(Duration::from_secs(5));
+    }
+
+    let mut retry_swapoff = 1;
+    sync_disk();
+
+    while let Err(e) = swapoff(&tmp_dir) {
+        if retry_swapoff == 5 {
+            return Err(DeploykitError::EscapeEnvironment(e.to_string()));
+        }
+        retry_swapoff += 1;
+        sync_disk();
+        thread::sleep(Duration::from_secs(5));
+    }
+
+    let mut retry_bind_mounts = 1;
+    sync_disk();
+
+    while let Err(e) = remove_bind_mounts(&tmp_dir) {
+        if retry_bind_mounts == 5 {
+            return Err(DeploykitError::EscapeEnvironment(e.to_string()));
+        }
+        retry_bind_mounts += 1;
+        sync_disk();
+        thread::sleep(Duration::from_secs(5));
+    }
+
+    let mut retry_umount_root_path = 1;
+    sync_disk();
+
+    while let Err(e) = umount_root_path(&tmp_dir) {
+        if retry_umount_root_path == 5 {
+            return Err(DeploykitError::EscapeEnvironment(e.to_string()));
+        }
+        retry_umount_root_path += 1;
+        sync_disk();
+        thread::sleep(Duration::from_secs(5));
+    }
+
+    Ok(())
 }

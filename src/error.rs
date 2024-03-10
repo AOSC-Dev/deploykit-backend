@@ -20,6 +20,8 @@ pub enum DeploykitError {
     FindEspPartition(String),
     #[error("Unsupport disk combo")]
     UnsupportedDiskCombo(String),
+    #[error("Failed to esacape environment: {0}")]
+    EscapeEnvironment(String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
