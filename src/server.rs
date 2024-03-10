@@ -538,6 +538,7 @@ fn start_install_inner(
         .to_path_buf();
 
     let tmp_dir_clone = temp_dir.clone();
+    let tmp_dir_clone2 = tmp_dir_clone.clone();
     let tmp_dir_clone3 = tmp_dir_clone.clone();
 
     if let DownloadType::Http { to_path, .. } = &mut config.download {
@@ -562,71 +563,57 @@ fn start_install_inner(
 
     let ps_clone = ps.clone();
 
+    let cancel_install_clone = cancel_install.clone();
+
     let t = thread::spawn(move || {
-        let (abort_t, abort_r) = mpsc::channel();
-        let check_install_is_finish_thread = thread::spawn(move || {
-            let (tx, rx) = mpsc::channel();
-            let install_thread = thread::spawn(move || {
-                let res = config
-                    .start_install(
-                        |step| {
-                            step_tx.send(step).unwrap();
-                        },
-                        move |progress| {
-                            progress_tx.send(progress).unwrap();
-                        },
-                        move |v| v_tx.send(v).unwrap(),
-                        temp_dir,
-                    )
-                    .map_err(|e| DeploykitError::Install(e.to_string()));
+        let (tx, rx) = mpsc::channel();
+        let install_thread = thread::spawn(move || {
+            let res = config
+                .start_install(
+                    |step| {
+                        step_tx.send(step).unwrap();
+                    },
+                    move |progress| {
+                        progress_tx.send(progress).unwrap();
+                    },
+                    move |v| v_tx.send(v).unwrap(),
+                    temp_dir,
+                    cancel_install_clone,
+                )
+                .map_err(|e| DeploykitError::Install(e.to_string()));
 
-                if let Err(e) = res {
-                    {
-                        let ps = ps_clone.lock().unwrap();
-                        if let ProgressStatus::Working { .. } = *ps {
-                            tx.send(e).expect("Install thread is exit.");
-                        }
+            if let Err(e) = res {
+                {
+                    let ps = ps_clone.lock().unwrap();
+                    if let ProgressStatus::Working { .. } = *ps {
+                        tx.send(e).expect("Install thread is exit.");
                     }
-                }
-            });
-
-            loop {
-                if cancel_install.load(Ordering::SeqCst) {
-                    {
-                        let mut ps = ps.lock().unwrap();
-                        *ps = ProgressStatus::Pending;
-                    }
-                    abort_t.send((root_fd, tmp_dir_clone)).unwrap();
-                    
-                    drop(install_thread);
-                    return;
-                }
-
-                if install_thread.is_finished() {
-                    let mut ps = ps.lock().unwrap();
-
-                    if let Ok(e) = rx.recv_timeout(Duration::from_millis(10)) {
-                        error!("Failed to install system: {e:?}");
-                        *ps = ProgressStatus::Error(e);
-                        return;
-                    }
-
-                    *ps = ProgressStatus::Finish;
-                    return;
                 }
             }
         });
 
-        // 查看安装是否已经被取消
         loop {
-            if let Ok((root_fd, tmp_dir)) = abort_r.recv() {
-                // 等待安装线程退出
-                loop {
-                    if check_install_is_finish_thread.is_finished() {
-                        safe_exit_env(root_fd.try_clone().unwrap(), tmp_dir.clone());
-                        return;
+            if install_thread.is_finished() {
+                if cancel_install.load(Ordering::SeqCst) {
+                    safe_exit_env(root_fd, tmp_dir_clone2);
+                    {
+                        let mut ps = ps.lock().unwrap();
+                        *ps = ProgressStatus::Pending;
                     }
+
+                    return;
                 }
+
+                let mut ps = ps.lock().unwrap();
+
+                if let Ok(e) = rx.recv_timeout(Duration::from_millis(10)) {
+                    error!("Failed to install system: {e:?}");
+                    *ps = ProgressStatus::Error(e);
+                    return;
+                }
+
+                *ps = ProgressStatus::Finish;
+                return;
             }
         }
     });
@@ -643,6 +630,11 @@ fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
 
     sync_disk();
     remove_bind_mounts(&tmp_dir).ok();
+
+    let efi_path = tmp_dir.join("efi");
+    if is_efi_booted() {
+        umount_root_path(&efi_path).ok();
+    }
 
     sync_disk();
     umount_root_path(&tmp_dir).ok();

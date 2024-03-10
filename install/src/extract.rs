@@ -35,7 +35,6 @@ where
         }
         progress(count as f64);
         v_download_len += file_size * count as f64 / 100.0;
-        dbg!(v_download_len);
     })
     .map_err(InstallError::Unpack)?;
 

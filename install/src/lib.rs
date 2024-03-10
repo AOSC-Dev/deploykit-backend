@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
 };
 
 use disk::{
@@ -49,7 +49,7 @@ mod zoneinfo;
 
 #[derive(Debug, Error)]
 pub enum InstallError {
-    #[error("Failed to unpack")]
+    #[error("Failed to unpack: {0}")]
     Unpack(std::io::Error),
     #[error("Failed to run command {command}, err: {err}")]
     RunCommand {
@@ -229,6 +229,14 @@ impl TryFrom<InstallConfigPrepare> for InstallConfig {
     }
 }
 
+macro_rules! cancel_install_exit {
+    ($cancel_install:ident) => {
+        if $cancel_install.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+    };
+}
+
 impl InstallConfig {
     pub fn start_install<F, F2, F3>(
         &self,
@@ -236,6 +244,7 @@ impl InstallConfig {
         progress: F2,
         velocity: F3,
         tmp_mount_path: PathBuf,
+        cancel_install: Arc<AtomicBool>,
     ) -> Result<(), InstallError>
     where
         F: Fn(u8),
@@ -246,7 +255,10 @@ impl InstallConfig {
         progress(0.0);
 
         self.format_partitions()?;
+        cancel_install_exit!(cancel_install);
+
         self.mount_partitions(&tmp_mount_path)?;
+        cancel_install_exit!(cancel_install);
 
         progress(50.0);
 
@@ -256,9 +268,11 @@ impl InstallConfig {
                 sys.refresh_memory();
                 let total_memory = sys.total_memory();
                 let size = get_recommend_swap_size(total_memory);
+                cancel_install_exit!(cancel_install);
                 create_swapfile(size, &tmp_mount_path)?;
             }
             SwapFile::Custom(size) => {
+                cancel_install_exit!(cancel_install);
                 create_swapfile(size as f64, &tmp_mount_path)?;
             }
             SwapFile::Disable => {}
@@ -269,16 +283,21 @@ impl InstallConfig {
         step(2);
         progress(0.0);
 
+        cancel_install_exit!(cancel_install);
         let progress_arc = Arc::new(progress);
         let velocity_arc = Arc::new(velocity);
         let progress = progress_arc.clone();
         let velocity = velocity_arc.clone();
+
+        cancel_install_exit!(cancel_install);
         
         let (squashfs_path, total_size) =
-            download_file(&self.download, progress_arc, velocity_arc)?;
+            download_file(&self.download, progress_arc, velocity_arc, cancel_install.clone())?;
 
         step(3);
         progress(0.0);
+
+        cancel_install_exit!(cancel_install);
 
         extract_squashfs(
             total_size as f64,
@@ -288,75 +307,113 @@ impl InstallConfig {
             &*velocity,
         )?;
 
+        cancel_install_exit!(cancel_install);
+
         velocity(0);
         step(4);
         progress(0.0);
 
+        cancel_install_exit!(cancel_install);
+
         info!("Generate /etc/fstab");
         self.genfatab(&tmp_mount_path)?;
+
+        cancel_install_exit!(cancel_install);
 
         progress(100.0);
 
         step(5);
         progress(0.0);
 
+        cancel_install_exit!(cancel_install);
+
         info!("Chroot to installed system ...");
         let owned_root_fd = get_dir_fd(Path::new("/"))?;
         dive_into_guest(&tmp_mount_path)?;
 
+        cancel_install_exit!(cancel_install);
+
         info!("Running dracut ...");
         execute_dracut()?;
+
+        cancel_install_exit!(cancel_install);
 
         progress(100.0);
 
         step(6);
         progress(0.0);
 
+        cancel_install_exit!(cancel_install);
+
         info!("Installing grub ...");
         self.install_grub()?;
+
+        cancel_install_exit!(cancel_install);
 
         progress(100.0);
 
         step(7);
         progress(0.0);
 
+        cancel_install_exit!(cancel_install);
+
         info!("Generating SSH key ...");
         gen_ssh_key()?;
+
+        cancel_install_exit!(cancel_install);
 
         progress(100.0);
 
         step(8);
         progress(0.0);
 
+        cancel_install_exit!(cancel_install);
+
         if self.swapfile != SwapFile::Disable {
             write_swap_entry_to_fstab()?;
         }
 
+        cancel_install_exit!(cancel_install);
+
         progress(25.0);
+
+        cancel_install_exit!(cancel_install);
 
         info!("Setting timezone as {} ...", self.timezone);
         set_zoneinfo(&self.timezone)?;
+
+        cancel_install_exit!(cancel_install);
 
         info!("Setting rtc_as_localtime ...");
         set_hwclock_tc(!self.rtc_as_localtime)?;
         progress(50.0);
 
+        cancel_install_exit!(cancel_install);
+
         info!("Setting hostname as {}", self.hostname);
         set_hostname(&self.hostname)?;
         progress(75.0);
 
+        cancel_install_exit!(cancel_install);
+
         info!("Setting User ...");
         add_new_user(&self.user.username, &self.user.password)?;
+
+        cancel_install_exit!(cancel_install);
 
         if let Some(full_name) = &self.user.full_name {
             passwd_set_fullname(full_name, &self.user.username)?;
         }
+
+        cancel_install_exit!(cancel_install);
 
         progress(80.0);
 
         info!("Setting locale ...");
         set_locale(&self.local)?;
         progress(90.0);
+
+        cancel_install_exit!(cancel_install);
 
         info!("Escape chroot ...");
         escape_chroot(owned_root_fd)?;

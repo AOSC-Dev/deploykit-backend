@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, thread};
@@ -15,6 +16,7 @@ pub fn download_file<F, F2>(
     download_type: &DownloadType,
     progress: Arc<F>,
     velocity: Arc<F2>,
+    cancel_install: Arc<AtomicBool>,
 ) -> Result<(PathBuf, usize), InstallError>
 where
     F: Fn(f64) + Sync + Send + 'static,
@@ -25,7 +27,7 @@ where
             let to_path = to_path.as_ref().ok_or(InstallError::DownloadPathIsNotSet)?;
             Ok((
                 to_path.clone(),
-                http_download_file(url, to_path, hash, progress, velocity)?,
+                http_download_file(url, to_path, hash, progress, velocity, cancel_install)?,
             ))
         }
         DownloadType::File(path) => {
@@ -49,6 +51,7 @@ fn http_download_file<F, F2>(
     hash: &str,
     progress: Arc<F>,
     velocity: Arc<F2>,
+    cancel_install: Arc<AtomicBool>,
 ) -> Result<usize, InstallError>
 where
     F: Fn(f64) + Sync + Send + 'static,
@@ -64,7 +67,7 @@ where
             .unwrap();
 
         runtime.block_on(async move {
-            http_download_file_inner(url, path, hash, progress, velocity).await
+            http_download_file_inner(url, path, hash, progress, velocity, cancel_install).await
         })
     })
     .join()
@@ -77,6 +80,7 @@ async fn http_download_file_inner<F, F2>(
     hash: String,
     progress: Arc<F>,
     velocity: Arc<F2>,
+    cancel_install: Arc<AtomicBool>,
 ) -> Result<usize, InstallError>
 where
     F: Fn(f64) + Sync + Send,
@@ -126,6 +130,10 @@ where
             now = Instant::now();
             velocity(v_download_len / 1024);
             v_download_len = 0;
+        }
+
+        if cancel_install.load(Ordering::Relaxed) {
+            return Ok(0);
         }
 
         file.write_all(&chunk)

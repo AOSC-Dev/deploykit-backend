@@ -46,7 +46,7 @@ fn mount_inner<P: AsRef<Path>>(
 
 /// Unmount the filesystem given at `root` and then do a sync
 pub fn umount_root_path(root: &Path) -> Result<(), InstallError> {
-    mount::unmount(root, mount::UnmountFlags::DETACH).map_err(|e| InstallError::UmountFs {
+    mount::unmount(root, mount::UnmountFlags::empty()).map_err(|e| InstallError::UmountFs {
         mount_point: root.display().to_string(),
         err: io::Error::new(e.kind(), e.to_string()),
     })?;
@@ -92,7 +92,7 @@ pub fn remove_bind_mounts(root: &Path) -> Result<(), InstallError> {
     for mount in BIND_MOUNTS {
         let mut root = root.to_owned();
         root.push(&mount[1..]);
-        mount::unmount(&root, mount::UnmountFlags::DETACH).map_err(|e| InstallError::UmountFs {
+        mount::unmount(&root, mount::UnmountFlags::empty()).map_err(|e| InstallError::UmountFs {
             mount_point: mount.to_string(),
             err: io::Error::new(e.kind(), "Failed to umount fs"),
         })?;
