@@ -17,6 +17,7 @@ thiserror = "1.0"
 tempfile = "3.9"
 ctrlc = "3.4"
 sysinfo = "0.30"
+rustix = { version = "0.38", features = ["process"] }
 
 disk = { path = "./disk" }
 install = { path = "./install" }

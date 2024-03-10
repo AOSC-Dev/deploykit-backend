@@ -569,6 +569,7 @@ dependencies = [
  "disk",
  "eyre",
  "install",
+ "rustix",
  "serde",
  "serde_json",
  "sysinfo",
