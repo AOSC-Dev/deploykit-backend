@@ -551,9 +551,7 @@ fn start_install_inner(
 
     ctrlc::set_handler(move || {
         if let Ok(root_fd) = root_fd_clone.try_clone() {
-            if let Err(e) = safe_exit_env(root_fd, tmp_dir_clone3.clone()) {
-                error!("{e}");
-            }
+            safe_exit_env(root_fd, tmp_dir_clone3.clone());
         } else {
             warn!("Failed to clone root_fd");
         }
@@ -622,9 +620,10 @@ fn start_install_inner(
         // 查看安装是否已经被取消
         loop {
             if let Ok((root_fd, tmp_dir)) = abort_r.recv() {
+                // 等待安装线程退出
                 loop {
                     if check_install_is_finish_thread.is_finished() {
-                        safe_exit_env(root_fd.try_clone().unwrap(), tmp_dir.clone()).ok();
+                        safe_exit_env(root_fd.try_clone().unwrap(), tmp_dir.clone());
                         return;
                     }
                 }
@@ -635,28 +634,16 @@ fn start_install_inner(
     Ok(t)
 }
 
-fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) -> Result<(), DeploykitError> {
+fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     sync_disk();
-
     escape_chroot(root_fd.try_clone().unwrap()).ok();
 
-    let mut retry_swapoff = 1;
     sync_disk();
-
-    while let Err(e) = swapoff(&tmp_dir) {
-        if retry_swapoff == 5 {
-            return Err(DeploykitError::EscapeEnvironment(e.to_string()));
-        }
-        retry_swapoff += 1;
-        sync_disk();
-        thread::sleep(Duration::from_secs(5));
-    }
+    swapoff(&tmp_dir).ok();
 
     sync_disk();
     remove_bind_mounts(&tmp_dir).ok();
+
     sync_disk();
-
     umount_root_path(&tmp_dir).ok();
-
-    Ok(())
 }
