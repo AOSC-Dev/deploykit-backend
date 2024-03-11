@@ -19,6 +19,10 @@ pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
     })
 }
 
+pub fn sync_disk() {
+    rustix::fs::sync();
+}
+
 fn device_is_sata(path: &Path) -> bool {
     device_is_match(path, r"^([^0-9]+)$")
 }

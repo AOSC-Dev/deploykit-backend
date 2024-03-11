@@ -614,6 +614,7 @@ dependencies = [
  "libparted-sys",
  "mbrman",
  "rand 0.8.5",
+ "rustix",
  "serde",
  "thiserror",
  "tracing",

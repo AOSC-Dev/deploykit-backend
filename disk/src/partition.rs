@@ -8,14 +8,14 @@ use std::{
 
 use bincode::serialize_into;
 use gptman::GPT;
-use libparted::{Device, Disk, DiskType, IsZero};
+use libparted::{Device, Disk, IsZero};
 use mbrman::MBR;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use uuid::{uuid, Uuid};
 
-use crate::{devices::list_devices, is_efi_booted, PartitionError};
+use crate::{devices::{list_devices, sync_disk}, is_efi_booted, PartitionError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DkPartition {
@@ -75,6 +75,8 @@ pub fn auto_create_partitions(
             .arg(dev_path)
             .output()
             .map_err(PartitionError::Wipefs)?;
+
+        sync_disk();
     }
 
     if is_efi_booted() {
