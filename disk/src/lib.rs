@@ -40,8 +40,12 @@ pub enum PartitionError {
     MbrMan(#[from] mbrman::Error),
     #[error("Failed to get optimal place")]
     GetOptimalPlace,
-    #[error("Failed to reload table")]
+    #[error("Failed to reload table: {0:?}")]
     GetTable(BlockError),
+    #[error("Failed to create partition table {path}: {err}")]
+    NewDisk { path: String, err: std::io::Error },
+    #[error("Run wipefs failed")]
+    Wipefs(std::io::Error),
 }
 
 impl Serialize for PartitionError {

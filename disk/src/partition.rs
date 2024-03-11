@@ -8,7 +8,7 @@ use std::{
 
 use bincode::serialize_into;
 use gptman::GPT;
-use libparted::{Device, Disk, IsZero};
+use libparted::{Device, Disk, DiskType, IsZero};
 use mbrman::MBR;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -64,14 +64,25 @@ pub fn get_partition_table_type(device_path: &Path) -> Result<String, PartitionE
 }
 
 pub fn auto_create_partitions(
-    dev: &Path,
+    dev_path: &Path,
 ) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
+    let pt = get_partition_table_type(dev_path)?;
+    if !["msdos, gpt"].contains(&pt.as_str()) {
+        Command::new("wipefs")
+            .arg("--all") // wipe all magic strings
+            .arg("-f") // force
+            .arg("-q") // quiet
+            .arg(dev_path)
+            .output()
+            .map_err(PartitionError::Wipefs)?;
+    }
+
     if is_efi_booted() {
-        let (efi, system) = auto_create_partitions_gpt(dev)?;
+        let (efi, system) = auto_create_partitions_gpt(dev_path)?;
         return Ok((Some(efi), system));
     }
 
-    Ok((None, auto_create_partitions_mbr(dev)?))
+    Ok((None, auto_create_partitions_mbr(dev_path)?))
 }
 
 pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
