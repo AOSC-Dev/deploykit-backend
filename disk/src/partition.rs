@@ -67,7 +67,7 @@ pub fn auto_create_partitions(
     dev_path: &Path,
 ) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
     let pt = get_partition_table_type(dev_path)?;
-    if !["msdos, gpt"].contains(&pt.as_str()) {
+    if !["msdos", "gpt"].contains(&pt.as_str()) {
         Command::new("wipefs")
             .arg("--all") // wipe all magic strings
             .arg("-f") // force
