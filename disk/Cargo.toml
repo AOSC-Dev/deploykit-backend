@@ -17,5 +17,4 @@ gptman = "1.1.1"
 mbrman = "0.5"
 rand = "0.8"
 uuid = { version = "1.7", features = ["macro-diagnostics"] }
-bincode = "1.3"
 rustix = { version = "0.38", features = ["process", "fs", "mount"] }

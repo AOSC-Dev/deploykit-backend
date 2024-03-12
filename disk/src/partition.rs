@@ -6,7 +6,6 @@ use std::{
     process::Command,
 };
 
-use bincode::serialize_into;
 use gptman::GPT;
 use libparted::{Device, Disk, IsZero};
 use mbrman::MBR;
@@ -15,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use uuid::{uuid, Uuid};
 
-use crate::{devices::{list_devices, sync_disk}, is_efi_booted, PartitionError};
+use crate::{devices::list_devices, is_efi_booted, PartitionError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DkPartition {
@@ -66,19 +65,6 @@ pub fn get_partition_table_type(device_path: &Path) -> Result<String, PartitionE
 pub fn auto_create_partitions(
     dev_path: &Path,
 ) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
-    let pt = get_partition_table_type(dev_path)?;
-    if !["msdos", "gpt"].contains(&pt.as_str()) {
-        Command::new("wipefs")
-            .arg("--all") // wipe all magic strings
-            .arg("-f") // force
-            .arg("-q") // quiet
-            .arg(dev_path)
-            .output()
-            .map_err(PartitionError::Wipefs)?;
-
-        sync_disk();
-    }
-
     if is_efi_booted() {
         let (efi, system) = auto_create_partitions_gpt(dev_path)?;
         return Ok((Some(efi), system));
@@ -214,8 +200,10 @@ pub fn auto_create_partitions_gpt(
     // 创建新的分区表
     let mut gpt = GPT::new_from(&mut f, sector_size, generate_gpt_random_uuid())?;
 
+    clear_start_sector(&mut f, sector_size)?;
+
     // 写一个假的 MBR 保护分区头
-    write_protective_mbr_into(&mut f, sector_size).unwrap();
+    GPT::write_protective_mbr_into(&mut f, sector_size).unwrap();
 
     // 起始扇区为 1MiB 除以扇区大小
     let starting_lba = 1024 * 1024 / sector_size;
@@ -228,12 +216,16 @@ pub fn auto_create_partitions_gpt(
 
     // 应用分区表的修改
     gpt.write_into(&mut f)?;
+    f.flush().map_err(PartitionError::Flush)?;
 
     // 重新读取分区表以读取刚刚的修改
     gptman::linux::reread_partition_table(&mut f).map_err(PartitionError::GetTable)?;
 
+    // 关闭文件，确保 libparted 能正确地读到分区
+    drop(f);
+
     // 使用 libparted 便利分区表，找到分区路径并格式化
-    // TODO: 自己实现设备路径寻找逻辑，彻底扔掉 libparted
+    // TODO: 自己实现`设备路径寻找逻辑，彻底扔掉 libparted
     let mut device =
         libparted::Device::new(device_path).map_err(|e| PartitionError::OpenDevice {
             path: device_path.display().to_string(),
@@ -303,6 +295,15 @@ pub fn auto_create_partitions_gpt(
     Ok((efi, system))
 }
 
+fn clear_start_sector(f: &mut fs::File, sector_size: u64) -> Result<(), PartitionError> {
+    f.seek(SeekFrom::Start(0))
+        .map_err(PartitionError::SeekSector)?;
+    let buf: Vec<u8> = vec![0; sector_size as usize];
+    f.write_all(&buf).map_err(PartitionError::ClearSector)?;
+
+    Ok(())
+}
+
 pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, PartitionError> {
     let mut f = fs::OpenOptions::new()
         .write(true)
@@ -316,6 +317,8 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
         gptman::linux::get_sector_size(&mut f).map_err(PartitionError::GetTable)? as u32;
 
     let mut mbr = MBR::new_from(&mut f, sector_size, mbr_disk_signature())?;
+
+    clear_start_sector(&mut f, sector_size as u64)?;
 
     let sectors = mbr.get_maximum_partition_size()?;
     let starting_lba = mbr
@@ -378,42 +381,6 @@ fn generate_gpt_random_uuid() -> [u8; 16] {
 
 fn mbr_disk_signature() -> [u8; 4] {
     rand::thread_rng().gen()
-}
-
-pub fn write_protective_mbr_into<W: ?Sized>(
-    mut writer: &mut W,
-    sector_size: u64,
-) -> bincode::Result<()>
-where
-    W: Write + Seek,
-{
-    let size = writer.seek(SeekFrom::End(0))? / sector_size - 1;
-    writer.seek(SeekFrom::Start(446))?;
-    // partition 1
-    writer.write_all(&[
-        0x00, // status
-        0x00, 0x02, 0x00, // CHS address of first absolute sector
-        0xee, // partition type
-        0xff, 0xff, 0xff, // CHS address of last absolute sector
-        0x01, 0x00, 0x00, 0x00, // LBA of first absolute sector
-    ])?;
-
-    // number of sectors in partition 1
-    serialize_into(
-        &mut writer,
-        &(if size > u64::from(u32::max_value()) {
-            u32::max_value()
-        } else {
-            size as u32
-        }),
-    )?;
-
-    writer.write_all(&[0; 16])?; // partition 2
-    writer.write_all(&[0; 16])?; // partition 3
-    writer.write_all(&[0; 16])?; // partition 4
-    writer.write_all(&[0x55, 0xaa])?; // signature
-
-    Ok(())
 }
 
 #[cfg(debug_assertions)]

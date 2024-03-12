@@ -44,8 +44,12 @@ pub enum PartitionError {
     GetTable(BlockError),
     #[error("Failed to create partition table {path}: {err}")]
     NewDisk { path: String, err: std::io::Error },
-    #[error("Run wipefs failed")]
-    Wipefs(std::io::Error),
+    #[error("Failed to seek sector size: {0:?}")]
+    SeekSector(std::io::Error),
+    #[error("Failed to clear sector: {0:?}")]
+    ClearSector(std::io::Error),
+    #[error("Failed to flush disk: {0:?}")]
+    Flush(std::io::Error),
 }
 
 impl Serialize for PartitionError {

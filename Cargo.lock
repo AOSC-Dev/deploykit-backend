@@ -606,7 +606,6 @@ dependencies = [
 name = "disk"
 version = "0.1.0"
 dependencies = [
- "bincode",
  "disk-types",
  "fancy-regex",
  "gptman",
