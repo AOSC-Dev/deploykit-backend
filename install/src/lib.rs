@@ -1,7 +1,10 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use disk::{
@@ -290,9 +293,13 @@ impl InstallConfig {
         let velocity = velocity_arc.clone();
 
         cancel_install_exit!(cancel_install);
-        
-        let (squashfs_path, total_size) =
-            download_file(&self.download, progress_arc, velocity_arc, cancel_install.clone())?;
+
+        let (squashfs_path, total_size) = download_file(
+            &self.download,
+            progress_arc,
+            velocity_arc,
+            cancel_install.clone(),
+        )?;
 
         step(3);
         progress(0.0);
@@ -423,7 +430,7 @@ impl InstallConfig {
         }
 
         info!("Removing bind mounts ...");
-        remove_bind_mounts(&tmp_mount_path)?;
+        remove_bind_mounts()?;
 
         info!("Unmounting filesystems...");
         umount_root_path(&tmp_mount_path)?;
@@ -532,4 +539,3 @@ impl InstallConfig {
         Ok(())
     }
 }
-

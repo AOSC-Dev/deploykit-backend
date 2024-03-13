@@ -4,7 +4,6 @@ use std::{io, path::Path};
 
 use crate::InstallError;
 
-const BIND_MOUNTS: &[&str] = &["/dev", "/proc", "/sys", "/run/udev"];
 const EFIVARS_PATH: &str = "/sys/firmware/efi/efivars";
 
 /// Mount the filesystem
@@ -61,42 +60,77 @@ pub fn sync_disk() {
 }
 
 /// Setup all the necessary bind mounts
-pub fn setup_bind_mounts(root: &Path) -> Result<(), InstallError> {
-    for mount in BIND_MOUNTS {
-        let mut root = root.to_owned();
-        root.push(&mount[1..]);
-        std::fs::create_dir_all(root.clone()).map_err(|e| InstallError::OperateFile {
-            path: root.display().to_string(),
-            err: io::Error::new(e.kind(), e.to_string()),
-        })?;
+pub fn setup_files_mounts(root: &Path) -> Result<(), InstallError> {
+    mount_inner(
+        Some("proc"),
+        &root.join("proc"),
+        Some("proc"),
+        MountFlags::NOSUID | MountFlags::NOEXEC | MountFlags::NODEV,
+    )?;
 
-        mount_inner(Some(mount), &root, None, MountFlags::BIND)?;
-    }
+    mount_inner(
+        Some("sys"),
+        &root.join("sys"),
+        Some("sysfs"),
+        MountFlags::NOSUID | MountFlags::NOEXEC | MountFlags::NODEV | MountFlags::RDONLY,
+    )?;
 
     if is_efi_booted() {
-        let root = root.join(&EFIVARS_PATH[1..]);
-        std::fs::create_dir_all(&root).map_err(|e| InstallError::OperateFile {
-            path: root.display().to_string(),
-            err: io::Error::new(e.kind(), e.to_string()),
-        })?;
-
-        mount_inner(Some(EFIVARS_PATH), &root, None, MountFlags::BIND)?;
+        mount_inner(
+            Some("efivarfs"),
+            &root.join(EFIVARS_PATH),
+            Some("efivarfs"),
+            MountFlags::NOSUID | MountFlags::NOEXEC | MountFlags::NODEV,
+        )?;
     }
+
+    mount_inner(
+        Some("udev"),
+        &root.join("dev"),
+        Some("devtmpfs"),
+        MountFlags::NOSUID,
+    )?;
+
+    mount_inner(
+        Some("devpts"),
+        &root.join("dev").join("pts"),
+        Some("devpts"),
+        MountFlags::NOSUID | MountFlags::NOEXEC,
+    )?;
+
+    mount_inner(
+        Some("shm"),
+        &root.join("dev").join("shm"),
+        Some("devpts"),
+        MountFlags::NOSUID | MountFlags::NODEV,
+    )?;
+
+    mount_inner(
+        Some("run"),
+        &root.join("run"),
+        Some("devpts"),
+        MountFlags::NOSUID | MountFlags::NODEV,
+    )?;
+
+    mount_inner(
+        Some("tmp"),
+        &root.join("tmp"),
+        Some("tmpfs"),
+        MountFlags::STRICTATIME | MountFlags::NODEV | MountFlags::NOSUID,
+    )?;
 
     Ok(())
 }
 
 /// Remove bind mounts
 /// Note: This function should be called outside of the chroot context
-pub fn remove_bind_mounts(root: &Path) -> Result<(), InstallError> {
-    for mount in BIND_MOUNTS {
-        let mut root = root.to_owned();
-        root.push(&mount[1..]);
-        mount::unmount(&root, mount::UnmountFlags::empty()).map_err(|e| InstallError::UmountFs {
-            mount_point: mount.to_string(),
+pub fn remove_bind_mounts() -> Result<(), InstallError> {
+    for i in ["proc", "sys", "udev", "devpts", "shm", "run", "tmp"] {
+        mount::unmount(i, mount::UnmountFlags::empty()).map_err(|e| InstallError::UmountFs {
+            mount_point: i.to_string(),
             err: io::Error::new(e.kind(), "Failed to umount fs"),
         })?;
     }
 
-    Ok(())  
+    Ok(())
 }

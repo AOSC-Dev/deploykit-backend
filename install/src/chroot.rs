@@ -6,7 +6,7 @@ use rustix::fs::{Mode, OFlags};
 use rustix::{fs, process};
 use tracing::info;
 
-use crate::mount::setup_bind_mounts;
+use crate::mount::setup_files_mounts;
 use crate::InstallError;
 
 /// Escape the chroot context using the previously obtained `root_fd` as a trampoline
@@ -35,7 +35,7 @@ pub fn escape_chroot<F: AsFd>(root_fd: F) -> Result<(), InstallError> {
 /// Setup bind mounts and chroot into the guest system
 /// Warning: This will make the program trapped in the new root directory
 pub fn dive_into_guest(root: &Path) -> Result<(), InstallError> {
-    setup_bind_mounts(root)?;
+    setup_files_mounts(root)?;
     process::chroot(root).map_err(|e| InstallError::OperateFile {
         path: "/".to_string(),
         err: io::Error::new(e.kind(), "Failed to chroot"),

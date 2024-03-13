@@ -629,7 +629,7 @@ fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     swapoff(&tmp_dir).ok();
 
     sync_disk();
-    remove_bind_mounts(&tmp_dir).ok();
+    remove_bind_mounts().ok();
 
     let efi_path = tmp_dir.join("efi");
     if is_efi_booted() {
