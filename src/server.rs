@@ -19,7 +19,7 @@ use disk::{
 };
 use install::{
     chroot::{escape_chroot, get_dir_fd},
-    mount::{remove_bind_mounts, sync_disk, umount_root_path},
+    mount::{remove_files_mounts, sync_disk, umount_root_path},
     swap::{get_recommend_swap_size, swapoff},
     DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User,
 };
@@ -593,14 +593,16 @@ fn start_install_inner(
         });
 
         loop {
-            if install_thread.is_finished() {
-                if cancel_install.load(Ordering::SeqCst) {
-                    safe_exit_env(root_fd, tmp_dir_clone2);
-                    {
-                        let mut ps = ps.lock().unwrap();
-                        *ps = ProgressStatus::Pending;
-                    }
+            let is_cancel = cancel_install.load(Ordering::SeqCst);
+            if is_cancel {
+                let mut ps = ps.lock().unwrap();
+                *ps = ProgressStatus::Pending;
+            }
 
+            if install_thread.is_finished() {
+                safe_exit_env(root_fd, tmp_dir_clone2);
+
+                if is_cancel {
                     return;
                 }
 
@@ -629,7 +631,7 @@ fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     swapoff(&tmp_dir).ok();
 
     sync_disk();
-    remove_bind_mounts().ok();
+    remove_files_mounts().ok();
 
     let efi_path = tmp_dir.join("efi");
     if is_efi_booted() {

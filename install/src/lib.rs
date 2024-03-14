@@ -8,6 +8,7 @@ use std::{
 };
 
 use disk::{
+    devices::sync_disk,
     partition::{format_partition, DkPartition},
     PartitionError,
 };
@@ -28,7 +29,7 @@ use crate::{
     grub::execute_grub_install,
     hostname::set_hostname,
     locale::{set_hwclock_tc, set_locale},
-    mount::{remove_bind_mounts, umount_root_path},
+    mount::{remove_files_mounts, umount_root_path},
     ssh::gen_ssh_key,
     swap::{create_swapfile, get_recommend_swap_size, swapoff},
     user::{add_new_user, passwd_set_fullname},
@@ -425,12 +426,14 @@ impl InstallConfig {
         info!("Escape chroot ...");
         escape_chroot(owned_root_fd)?;
 
-        if self.swapfile != SwapFile::Disable {
+        if self.swapfile != SwapFile::Disable || self.swapfile != SwapFile::Custom(0) {
             swapoff(&tmp_mount_path).ok();
         }
 
+        sync_disk();
+
         info!("Removing bind mounts ...");
-        remove_bind_mounts()?;
+        remove_files_mounts()?;
 
         info!("Unmounting filesystems...");
         umount_root_path(&tmp_mount_path)?;

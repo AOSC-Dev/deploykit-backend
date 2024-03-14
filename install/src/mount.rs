@@ -1,10 +1,11 @@
 use disk::is_efi_booted;
 use rustix::mount::{self, MountFlags};
+use tracing::debug;
 use std::{io, path::Path};
 
 use crate::InstallError;
 
-const EFIVARS_PATH: &str = "/sys/firmware/efi/efivars";
+const EFIVARS_PATH: &str = "sys/firmware/efi/efivars";
 
 /// Mount the filesystem
 pub(crate) fn mount_root_path(
@@ -112,24 +113,32 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), InstallError> {
         MountFlags::NOSUID | MountFlags::NODEV,
     )?;
 
-    mount_inner(
-        Some("tmp"),
-        &root.join("tmp"),
-        Some("tmpfs"),
-        MountFlags::STRICTATIME | MountFlags::NODEV | MountFlags::NOSUID,
-    )?;
+    // mount_inner(
+    //     Some("tmp"),
+    //     &root.join("tmp"),
+    //     Some("tmpfs"),
+    //     MountFlags::STRICTATIME | MountFlags::NODEV | MountFlags::NOSUID,
+    // )?;
 
     Ok(())
 }
 
 /// Remove bind mounts
 /// Note: This function should be called outside of the chroot context
-pub fn remove_bind_mounts() -> Result<(), InstallError> {
-    for i in ["proc", "sys", "udev", "devpts", "shm", "run", "tmp"] {
-        mount::unmount(i, mount::UnmountFlags::empty()).map_err(|e| InstallError::UmountFs {
+pub fn remove_files_mounts() -> Result<(), InstallError> {
+    let mut mounts = ["proc", "sys", "efivarfs", "udev", "devpts", "shm", "run"];
+    mounts.reverse();
+    for i in mounts {
+        if i == "efivarfs" && !is_efi_booted() {
+            continue;
+        }
+
+        let res = mount::unmount(i, mount::UnmountFlags::empty()).map_err(|e| InstallError::UmountFs {
             mount_point: i.to_string(),
             err: io::Error::new(e.kind(), "Failed to umount fs"),
-        })?;
+        });
+
+        debug!("{} is umount success: {}", i, res.is_ok());
     }
 
     Ok(())
