@@ -5,12 +5,11 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
+    time::Duration,
 };
 
 use disk::{
-    devices::sync_disk,
-    partition::{format_partition, DkPartition},
-    PartitionError,
+    is_efi_booted, partition::{format_partition, DkPartition}, PartitionError
 };
 
 use download::download_file;
@@ -20,7 +19,7 @@ use mount::mount_root_path;
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use thiserror::Error;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::{
     chroot::{dive_into_guest, escape_chroot, get_dir_fd},
@@ -427,15 +426,28 @@ impl InstallConfig {
         escape_chroot(owned_root_fd)?;
 
         if self.swapfile != SwapFile::Disable || self.swapfile != SwapFile::Custom(0) {
-            swapoff(&tmp_mount_path).ok();
+            let mut retry = 1;
+            while let Err(e) = swapoff(&tmp_mount_path) {
+                debug!("swapoff has error: {e:?}, retry {} times", retry);
+
+                if retry == 5 {
+                    break;
+                }
+
+                retry += 1;
+                std::thread::sleep(Duration::from_millis(500));
+            }
         }
 
-        sync_disk();
-
-        info!("Removing bind mounts ...");
-        remove_files_mounts()?;
+        info!("Removing mounts ...");
+        remove_files_mounts(&tmp_mount_path)?;
 
         info!("Unmounting filesystems...");
+
+        if is_efi_booted() {
+            umount_root_path(&tmp_mount_path.join("efi"))?;
+        }
+
         umount_root_path(&tmp_mount_path)?;
 
         progress(100.0);

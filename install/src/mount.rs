@@ -1,7 +1,7 @@
 use disk::is_efi_booted;
 use rustix::mount::{self, MountFlags};
-use tracing::debug;
 use std::{io, path::Path};
+use tracing::debug;
 
 use crate::InstallError;
 
@@ -125,20 +125,35 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), InstallError> {
 
 /// Remove bind mounts
 /// Note: This function should be called outside of the chroot context
-pub fn remove_files_mounts() -> Result<(), InstallError> {
-    let mut mounts = ["proc", "sys", "efivarfs", "udev", "devpts", "shm", "run"];
+pub fn remove_files_mounts(system_path: &Path) -> Result<(), InstallError> {
+    let mut mounts = [
+        "proc",
+        "sys",
+        EFIVARS_PATH,
+        "dev",
+        "dev/pts",
+        "dev/shm",
+        "run",
+    ];
+
     mounts.reverse();
     for i in mounts {
         if i == "efivarfs" && !is_efi_booted() {
             continue;
         }
 
-        let res = mount::unmount(i, mount::UnmountFlags::empty()).map_err(|e| InstallError::UmountFs {
-            mount_point: i.to_string(),
-            err: io::Error::new(e.kind(), "Failed to umount fs"),
+        let mount_point = system_path.join(i);
+
+        debug!("umounting point {}", mount_point.display().to_string());
+
+        let res = mount::unmount(mount_point, mount::UnmountFlags::empty()).map_err(|e| {
+            InstallError::UmountFs {
+                mount_point: i.to_string(),
+                err: io::Error::new(e.kind(), "Failed to umount fs"),
+            }
         });
 
-        debug!("{} is umount success: {}", i, res.is_ok());
+        debug!("{} umount result: {:?}", i, res);
     }
 
     Ok(())

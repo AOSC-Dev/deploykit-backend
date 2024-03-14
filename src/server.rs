@@ -592,17 +592,21 @@ fn start_install_inner(
             }
         });
 
+        let mut is_cancel = false;
+
         loop {
-            let is_cancel = cancel_install.load(Ordering::SeqCst);
+            if !is_cancel {
+                is_cancel = cancel_install.load(Ordering::SeqCst);
+            };
+
             if is_cancel {
                 let mut ps = ps.lock().unwrap();
                 *ps = ProgressStatus::Pending;
             }
 
             if install_thread.is_finished() {
-                safe_exit_env(root_fd, tmp_dir_clone2);
-
                 if is_cancel {
+                    safe_exit_env(root_fd, tmp_dir_clone2);
                     return;
                 }
 
@@ -631,7 +635,7 @@ fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     swapoff(&tmp_dir).ok();
 
     sync_disk();
-    remove_files_mounts().ok();
+    remove_files_mounts(&tmp_dir).ok();
 
     let efi_path = tmp_dir.join("efi");
     if is_efi_booted() {
