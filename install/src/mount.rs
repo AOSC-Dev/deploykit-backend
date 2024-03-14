@@ -113,13 +113,6 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), InstallError> {
         MountFlags::NOSUID | MountFlags::NODEV,
     )?;
 
-    // mount_inner(
-    //     Some("tmp"),
-    //     &root.join("tmp"),
-    //     Some("tmpfs"),
-    //     MountFlags::STRICTATIME | MountFlags::NODEV | MountFlags::NOSUID,
-    // )?;
-
     Ok(())
 }
 
@@ -136,7 +129,9 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), InstallError> {
         "run",
     ];
 
+    // 需要按顺序卸载挂载点
     mounts.reverse();
+
     for i in mounts {
         if i == "efivarfs" && !is_efi_booted() {
             continue;
@@ -144,16 +139,16 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), InstallError> {
 
         let mount_point = system_path.join(i);
 
-        debug!("umounting point {}", mount_point.display().to_string());
+        debug!("umounting point {}", mount_point.display());
 
-        let res = mount::unmount(mount_point, mount::UnmountFlags::empty()).map_err(|e| {
+        let res = mount::unmount(&mount_point, mount::UnmountFlags::empty()).map_err(|e| {
             InstallError::UmountFs {
                 mount_point: i.to_string(),
                 err: io::Error::new(e.kind(), "Failed to umount fs"),
             }
         });
 
-        debug!("{} umount result: {:?}", i, res);
+        debug!("{} umount result: {:?}", mount_point.display(), res);
     }
 
     Ok(())
