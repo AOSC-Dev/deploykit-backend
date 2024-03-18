@@ -9,7 +9,9 @@ use std::{
 };
 
 use disk::{
-    is_efi_booted, partition::{format_partition, DkPartition}, PartitionError
+    is_efi_booted,
+    partition::{format_partition, DkPartition},
+    PartitionError,
 };
 
 use download::download_file;
@@ -234,7 +236,7 @@ impl TryFrom<InstallConfigPrepare> for InstallConfig {
 
 macro_rules! cancel_install_exit {
     ($cancel_install:ident) => {
-        if $cancel_install.load(Ordering::Relaxed) {
+        if $cancel_install.load(Ordering::SeqCst) {
             return Ok(());
         }
     };
@@ -312,6 +314,7 @@ impl InstallConfig {
             tmp_mount_path.to_path_buf(),
             &*progress,
             &*velocity,
+            cancel_install.clone(),
         )?;
 
         cancel_install_exit!(cancel_install);

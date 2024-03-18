@@ -606,7 +606,7 @@ fn start_install_inner(
                 // 需要先确保安装线程已经结束再退出环境
                 if is_cancel {
                     safe_exit_env(root_fd, tmp_dir_clone2);
-                    cancel_install.store(false, Ordering::Relaxed);
+                    cancel_install.store(false, Ordering::SeqCst);
                     return;
                 }
 

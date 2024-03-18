@@ -289,7 +289,7 @@ dependencies = [
  "rustc-hash",
  "shlex",
  "syn 2.0.48",
- "which",
+ "which 4.4.2",
 ]
 
 [[package]]
@@ -2383,13 +2383,14 @@ checksum = "f962df74c8c05a667b5ee8bcf162993134c104e96440b663c8daa176dc772d8c"
 
 [[package]]
 name = "unsquashfs-wrapper"
-version = "0.1.1"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "441cb34bd971ea57e7ef96b41926146149e2174bef969c075f794c73ac5bf3e0"
+checksum = "5cc2f5feeff0e7f5dc6d0c25ce0c049079f75e95eca7d4c16450821af3bfa00d"
 dependencies = [
  "libc",
- "log",
- "which",
+ "rustix",
+ "tracing",
+ "which 6.0.0",
 ]
 
 [[package]]
@@ -2548,6 +2549,19 @@ dependencies = [
  "home",
  "once_cell",
  "rustix",
+]
+
+[[package]]
+name = "which"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fa5e0c10bf77f44aac573e498d1a82d5fbd5e91f6fc0a99e7be4b38e85e101c"
+dependencies = [
+ "either",
+ "home",
+ "once_cell",
+ "rustix",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
