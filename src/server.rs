@@ -7,7 +7,7 @@ use std::{
         mpsc::{self, Sender},
         Arc, Mutex,
     },
-    thread::{self, sleep, JoinHandle},
+    thread::{self, JoinHandle},
     time::Duration,
 };
 
@@ -358,8 +358,6 @@ impl DeploykitServer {
     fn cancel_install(&mut self) -> String {
         if self.install_thread.is_some() {
             self.cancel_run_install.store(true, Ordering::SeqCst);
-            sleep(Duration::from_millis(100));
-            self.cancel_run_install.store(false, Ordering::SeqCst);
         }
 
         Message::ok(&"")
@@ -608,6 +606,7 @@ fn start_install_inner(
                 // 需要先确保安装线程已经结束再退出环境
                 if is_cancel {
                     safe_exit_env(root_fd, tmp_dir_clone2);
+                    cancel_install.store(false, Ordering::Relaxed);
                     return;
                 }
 
