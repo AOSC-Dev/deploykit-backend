@@ -597,16 +597,15 @@ fn start_install_inner(
                 is_cancel = cancel_install.load(Ordering::SeqCst);
             };
 
-            if is_cancel {
-                let mut ps = ps.lock().unwrap();
-                *ps = ProgressStatus::Pending;
-            }
-
             if install_thread.is_finished() {
                 // 需要先确保安装线程已经结束再退出环境
                 if is_cancel {
                     safe_exit_env(root_fd, tmp_dir_clone2);
                     cancel_install.store(false, Ordering::SeqCst);
+                    {
+                        let mut ps = ps.lock().unwrap();
+                        *ps = ProgressStatus::Pending;
+                    }
                     return;
                 }
 
