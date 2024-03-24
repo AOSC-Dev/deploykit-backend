@@ -2,7 +2,7 @@ use std::future::pending;
 
 use crate::server::DeploykitServer;
 use eyre::Result;
-use tracing::debug;
+use tracing::{debug, info};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
@@ -25,6 +25,8 @@ async fn main() -> Result<()> {
             .with(LevelFilter::DEBUG)
             .init();
     }
+
+    info!("Deploykit version: {}", env!("VERGEN_GIT_DESCRIBE"));
 
     let deploykit_server = DeploykitServer::default();
 

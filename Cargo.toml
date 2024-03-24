@@ -30,3 +30,6 @@ loopdev = { git = "https://github.com/eatradish/loopdev", rev = "0dde43a15320cf8
 
 [dev-dependencies]
 clap = { version =  "4.4", features = ["derive"] }
+
+[build-dependencies]
+vergen = { version = "8.3.1", features = ["build", "cargo", "git", "gitcl", "rustc", "si"] }
