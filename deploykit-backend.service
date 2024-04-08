@@ -1,0 +1,10 @@
+[Unit]
+Description=AOSC OS Installer (DeployKit) Backend
+
+[Service]
+Type=dbus
+BusName=io.aosc.Deploykit1
+ExecStart=/usr/bin/deploykit-backend
+
+[Install]
+WantedBy=multi-user.target
