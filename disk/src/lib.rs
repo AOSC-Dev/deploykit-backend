@@ -151,6 +151,6 @@ pub fn right_combine(device_path: &Path) -> Result<(), PartitionError> {
 }
 
 #[cfg(target_arch = "powerpc64")]
-pub fn right_combine(device_path: Option<&Path>) -> Result<(), PartitionError> {
+pub fn right_combine(device_path: &Path) -> Result<(), PartitionError> {
     Ok(())
 }
