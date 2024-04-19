@@ -14,9 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use uuid::{uuid, Uuid};
 
-use crate::{
-    is_efi_booted, PartitionError,
-};
+use crate::{is_efi_booted, PartitionError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DkPartition {
@@ -454,7 +452,7 @@ pub fn all_esp_partitions() -> Vec<DkPartition> {
     for device in disks.devices {
         for parts in device.partitions {
             if let Some(p) = parts.partition {
-                if p.type_.into_bytes() == EFI.to_bytes_le() {
+                if p.type_ == EFI.to_string() {
                     res.push(DkPartition {
                         path: Some(parts.device),
                         parent_path: Some(device.parent.device.clone()),
