@@ -147,31 +147,22 @@ pub fn list_partitions(device_path: PathBuf) -> Vec<DkPartition> {
 }
 
 pub fn find_esp_partition(device_path: &Path) -> Result<DkPartition, PartitionError> {
-    let mut device =
-        Device::get(device_path).map_err(|e| PartitionError::open_device(device_path, e))?;
-    if let Ok(disk) = libparted::Disk::new(&mut device) {
-        for mut part in disk.parts() {
-            if part.num() < 0 {
-                continue;
-            }
-            if part.get_flag(libparted::PartitionFlag::PED_PARTITION_ESP) {
-                let fs_type = if let Ok(type_) = part.get_geom().probe_fs() {
-                    Some(type_.name().to_owned())
-                } else {
-                    None
-                };
-                let path = part
-                    .get_path()
-                    .ok_or_else(|| PartitionError::FindEspPartition {
-                        path: device_path.display().to_string(),
-                        err: io::Error::new(io::ErrorKind::Other, "Unexcept error"),
-                    })?;
-                return Ok(DkPartition {
-                    path: Some(path.to_owned()),
-                    parent_path: None,
-                    size: 0,
-                    fs_type,
-                });
+    let udisks2 = UDisks2::new().unwrap();
+    let disk = Disks::new(&udisks2);
+
+    for d in disk.devices {
+        if d.parent.device == device_path {
+            for part in d.partitions {
+                if let Some(p) = part.partition {
+                    if p.type_ == EFI.to_string() {
+                        return Ok(DkPartition {
+                            path: Some(part.device),
+                            parent_path: Some(d.parent.device),
+                            fs_type: part.id_type,
+                            size: part.size,
+                        });
+                    }
+                }
             }
         }
     }
