@@ -7,7 +7,7 @@ use std::{
 
 use dbus_udisks2::{Disks, UDisks2};
 use gptman::GPT;
-use libparted::{Device, Disk, IsZero};
+use libparted::{Disk, IsZero};
 use mbrman::MBR;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -24,7 +24,6 @@ pub struct DkPartition {
     pub size: u64,
 }
 
-const SUPPORT_PARTITION_TYPE: &[&str] = &["primary", "logical"];
 const EFI: Uuid = uuid!("C12A7328-F81F-11D2-BA4B-00A0C93EC93B");
 const LINUX_FS: Uuid = uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4");
 
@@ -110,33 +109,20 @@ pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
 
 pub fn list_partitions(device_path: PathBuf) -> Vec<DkPartition> {
     let mut partitions = Vec::new();
-    if let Ok(mut dev) = Device::new(&device_path) {
-        let sector_size = dev.sector_size();
-        if let Ok(disk) = libparted::Disk::new(&mut dev) {
-            for mut part in disk.parts() {
-                if part.num() < 0 {
-                    continue;
-                }
 
-                let geom_length: i64 = part.geom_length();
-                let part_length = if geom_length < 0 {
-                    0
-                } else {
-                    geom_length as u64
-                };
+    let udisks2 = UDisks2::new().unwrap();
+    let disks = Disks::new(&udisks2);
 
-                let fs_type = if let Ok(type_) = part.get_geom().probe_fs() {
-                    Some(type_.name().to_owned())
-                } else {
-                    None
-                };
-
-                if SUPPORT_PARTITION_TYPE.contains(&part.type_get_name()) {
+    for d in disks.devices {
+        for part in d.partitions {
+            if let Some(p) = part.partition {
+                // 若不是 container，则一定是主分区或逻辑分区
+                if !p.is_container {
                     partitions.push(DkPartition {
-                        path: part.get_path().map(|path| path.to_owned()),
+                        path: Some(part.device),
                         parent_path: Some(device_path.clone()),
-                        size: sector_size * part_length,
-                        fs_type,
+                        size: part.size,
+                        fs_type: part.id_type,
                     });
                 }
             }
