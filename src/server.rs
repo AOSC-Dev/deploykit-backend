@@ -12,7 +12,7 @@ use std::{
 };
 
 use disk::{
-    devices::list_devices,
+    devices::list_devices_udisk2,
     is_efi_booted,
     partition::{self, all_esp_partitions, auto_create_partitions, list_partitions, DkPartition},
     PartitionError,
@@ -232,11 +232,11 @@ impl DeploykitServer {
 
     fn get_list_devices(&self) -> String {
         let mut res = vec![];
-        for i in list_devices() {
+        for i in list_devices_udisk2() {
             res.push(DkDevice {
-                path: i.path().display().to_string(),
-                model: i.model().to_string(),
-                size: i.sector_size() * i.length(),
+                path: i.parent.path,
+                model: i.drive.model,
+                size: i.drive.size,
             });
         }
 

@@ -1,38 +1,22 @@
 use std::path::Path;
 
-use dbus_udisks2::{Block, UDisks2};
+use dbus_udisks2::{DiskDevice, Disks, UDisks2};
 use fancy_regex::Regex;
-use libparted::Device;
 use tracing::info;
 
-pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
-    Device::devices(true).filter(|dev| {
-        let is_sata = device_is_sata(dev.path());
-        info!("{} is sata: {is_sata}", dev.path().display());
-
-        let is_sdcard = device_is_sdcard(dev.path());
-        info!("{} is sdcard: {is_sdcard}", dev.path().display());
-
-        let is_nvme = device_is_nvme(dev.path());
-        info!("{} is nvme: {is_nvme}", dev.path().display());
-
-        is_sata || is_sdcard || is_nvme
-    })
-}
-
-pub fn list_devices_udisk2() -> impl Iterator<Item = Block> {
+pub fn list_devices_udisk2() -> impl Iterator<Item = DiskDevice> {
     let udisks2 = UDisks2::new().unwrap();
-    let blocks = udisks2.get_blocks().collect::<Vec<_>>();
+    let disks = Disks::new(&udisks2);
 
-    blocks.into_iter().filter(|x| {
-        let is_sata = device_is_sata(&x.device);
-        info!("{} is sata: {is_sata}", &x.device.display());
+    disks.devices.into_iter().filter(|x| {
+        let is_sata = device_is_sata(&x.parent.device);
+        info!("{} is sata: {is_sata}", &x.parent.device.display());
 
-        let is_sdcard = device_is_sdcard(&x.device);
-        info!("{} is sdcard: {is_sdcard}", &x.device.display());
+        let is_sdcard = device_is_sdcard(&x.parent.device);
+        info!("{} is sdcard: {is_sdcard}", &x.parent.device.display());
 
-        let is_nvme = device_is_nvme(&x.device);
-        info!("{} is nvme: {is_nvme}", &x.device.display());
+        let is_nvme = device_is_nvme(&x.parent.device);
+        info!("{} is nvme: {is_nvme}", &x.parent.device.display());
 
         is_sata || is_sdcard || is_nvme
     })
