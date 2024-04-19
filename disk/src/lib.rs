@@ -84,7 +84,7 @@ impl TryFrom<&str> for Table {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "gpt" => Ok(Table::GPT),
-            "msdos" | "mbr" => Ok(Table::MBR),
+            "msdos" | "mbr" | "dos" => Ok(Table::MBR),
             _ => Err(PartitionError::UnsupportedTable(value.to_string())),
         }
     }
@@ -130,7 +130,7 @@ pub fn right_combine(device_path: &Path) -> Result<(), PartitionError> {
     let partition_table_t = get_partition_table_type_udisk2(device_path)?;
     let is_efi_booted = is_efi_booted();
     if (partition_table_t == "gpt" && is_efi_booted)
-        || (partition_table_t == "msdos" && !is_efi_booted)
+        || (partition_table_t == "dos" && !is_efi_booted)
     {
         return Ok(());
     }
