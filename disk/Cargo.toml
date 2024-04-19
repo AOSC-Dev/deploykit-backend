@@ -18,3 +18,4 @@ mbrman = "0.5"
 rand = "0.8"
 uuid = { version = "1.7", features = ["macro-diagnostics"] }
 rustix = { version = "0.38", features = ["process", "fs", "mount"] }
+dbus-udisks2 = "0.3"

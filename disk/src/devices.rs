@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use dbus_udisks2::{Block, UDisks2};
 use fancy_regex::Regex;
 use libparted::Device;
 use tracing::info;
@@ -14,6 +15,24 @@ pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
 
         let is_nvme = device_is_nvme(dev.path());
         info!("{} is nvme: {is_nvme}", dev.path().display());
+
+        is_sata || is_sdcard || is_nvme
+    })
+}
+
+pub fn list_devices_udisk2() -> impl Iterator<Item = Block> {
+    let udisks2 = UDisks2::new().unwrap();
+    let blocks = udisks2.get_blocks().collect::<Vec<_>>();
+
+    blocks.into_iter().filter(|x| {
+        let is_sata = device_is_sata(&x.device);
+        info!("{} is sata: {is_sata}", &x.device.display());
+
+        let is_sdcard = device_is_sdcard(&x.device);
+        info!("{} is sdcard: {is_sdcard}", &x.device.display());
+
+        let is_nvme = device_is_nvme(&x.device);
+        info!("{} is nvme: {is_nvme}", &x.device.display());
 
         is_sata || is_sdcard || is_nvme
     })

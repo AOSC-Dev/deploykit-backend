@@ -1,11 +1,11 @@
 use std::{
-    ffi::CStr,
     fs,
-    io::{self, Seek, SeekFrom, Write},
+    io::{self, ErrorKind, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::Command,
 };
 
+use dbus_udisks2::UDisks2;
 use gptman::GPT;
 use libparted::{Device, Disk, IsZero};
 use mbrman::MBR;
@@ -36,30 +36,28 @@ pub fn cvt<T: IsZero>(t: T) -> io::Result<T> {
     }
 }
 
-pub fn get_partition_table_type(device_path: &Path) -> Result<String, PartitionError> {
-    let device = Device::new(device_path).map_err(|e| PartitionError::OpenDevice {
-        path: device_path.display().to_string(),
-        err: e,
-    })?;
+pub fn get_partition_table_type_udisk2(device_path: &Path) -> Result<String, PartitionError> {
+    let udisks2 = UDisks2::new().unwrap();
+    for block in udisks2.get_blocks() {
+        if block.device.to_str().unwrap() == device_path.display().to_string() {
+            let table = block.table;
 
-    let partition_t =
-        cvt(unsafe { libparted_sys::ped_disk_probe(device.ped_device()) }).map_err(|e| {
-            PartitionError::GetPartitionType {
-                path: device_path.display().to_string(),
-                err: e,
+            if let Some(table) = table {
+                return Ok(table.type_);
             }
-        })?;
+        }
+    }
 
-    let partition_t_name =
-        unsafe { cvt((*partition_t).name) }.map_err(|e| PartitionError::GetPartitionType {
-            path: device_path.display().to_string(),
-            err: e,
-        })?;
-
-    let partition_t = unsafe { CStr::from_ptr(partition_t_name) };
-    let partition_t = partition_t.to_str()?.to_string();
-
-    Ok(partition_t)
+    Err(PartitionError::GetPartitionType {
+        path: device_path.display().to_string(),
+        err: io::Error::new(
+            ErrorKind::Other,
+            format!(
+                "Failed to get partition table type: {}",
+                device_path.display()
+            ),
+        ),
+    })
 }
 
 pub fn auto_create_partitions(
@@ -225,7 +223,7 @@ pub fn auto_create_partitions_gpt(
     drop(f);
 
     // 使用 libparted 便利分区表，找到分区路径并格式化
-    // TODO: 自己实现`设备路径寻找逻辑，彻底扔掉 libparted
+    // TODO: 自己实现设备路径寻找逻辑，彻底扔掉 libparted
     let mut device =
         libparted::Device::new(device_path).map_err(|e| PartitionError::OpenDevice {
             path: device_path.display().to_string(),
