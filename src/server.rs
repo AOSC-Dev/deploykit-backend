@@ -234,7 +234,7 @@ impl DeploykitServer {
         let mut res = vec![];
         for i in list_devices_udisk2() {
             res.push(DkDevice {
-                path: i.parent.path,
+                path: i.parent.device.display().to_string(),
                 model: i.drive.model,
                 size: i.drive.size,
             });
