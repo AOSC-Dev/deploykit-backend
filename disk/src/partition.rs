@@ -5,7 +5,7 @@ use std::{
     process::Command,
 };
 
-use dbus_udisks2::UDisks2;
+use dbus_udisks2::{Disks, UDisks2};
 use gptman::GPT;
 use libparted::{Device, Disk, IsZero};
 use mbrman::MBR;
@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use uuid::{uuid, Uuid};
 
-use crate::{devices::list_devices, is_efi_booted, PartitionError};
+use crate::{
+    is_efi_booted, PartitionError,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DkPartition {
@@ -444,45 +446,20 @@ fn gpt_partition(gpt: &mut GPT, efi_size: u64, sector_size: u64, starting_lba: u
 }
 
 pub fn all_esp_partitions() -> Vec<DkPartition> {
-    let devices = list_devices();
-    let mut dev_path_and_sector = vec![];
-
-    for dev in devices {
-        let path = dev.path();
-        if let Some(gpt) = fs::File::open(path)
-            .ok()
-            .and_then(|mut x| GPT::find_from(&mut x).ok())
-        {
-            for (_, c) in gpt.iter() {
-                if c.partition_type_guid == EFI.to_bytes_le() {
-                    dev_path_and_sector.push((path.to_path_buf(), c.starting_lba));
-                }
-            }
-        }
-    }
-
     let mut res = vec![];
 
-    for (path, lba) in dev_path_and_sector {
-        if let Ok(mut d) = Device::new(&path) {
-            let sector_size = d.sector_size();
+    let udisks2 = UDisks2::new().unwrap();
+    let disks = Disks::new(&udisks2);
 
-            if let Ok(disk) = Disk::new(&mut d) {
-                let part = disk.get_partition_by_sector(lba as i64);
-
-                if let Some(mut part) = part {
+    for device in disks.devices {
+        for parts in device.partitions {
+            if let Some(p) = parts.partition {
+                if p.type_.into_bytes() == EFI.to_bytes_le() {
                     res.push(DkPartition {
-                        path: part.get_path().map(|x| x.to_path_buf()),
-                        parent_path: Some(path),
-                        fs_type: part
-                            .get_geom()
-                            .probe_fs()
-                            .ok()
-                            .map(|x| x.name().to_string()),
-                        size: match part.geom_length() {
-                            ..=0 => 0,
-                            x @ 1.. => x as u64 * sector_size,
-                        },
+                        path: Some(parts.device),
+                        parent_path: Some(device.parent.device.clone()),
+                        fs_type: parts.id_type,
+                        size: p.size,
                     });
                 }
             }
