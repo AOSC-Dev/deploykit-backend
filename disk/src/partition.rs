@@ -7,7 +7,6 @@ use std::{
 
 use dbus_udisks2::{Disks, UDisks2};
 use gptman::GPT;
-use libparted::{Disk, IsZero};
 use mbrman::MBR;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -26,14 +25,6 @@ pub struct DkPartition {
 
 const EFI: Uuid = uuid!("C12A7328-F81F-11D2-BA4B-00A0C93EC93B");
 const LINUX_FS: Uuid = uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4");
-
-pub fn cvt<T: IsZero>(t: T) -> io::Result<T> {
-    if t.is_zero() {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(t)
-    }
-}
 
 pub fn get_partition_table_type_udisk2(device_path: &Path) -> Result<String, PartitionError> {
     let udisks2 = UDisks2::new().unwrap();
@@ -199,56 +190,43 @@ pub fn auto_create_partitions_gpt(
     // 关闭文件，确保 libparted 能正确地读到分区
     drop(f);
 
-    // 使用 libparted 便利分区表，找到分区路径并格式化
-    // TODO: 自己实现设备路径寻找逻辑，彻底扔掉 libparted
-    let mut device =
-        libparted::Device::new(device_path).map_err(|e| PartitionError::OpenDevice {
-            path: device_path.display().to_string(),
-            err: e,
-        })?;
-
-    let disk = Disk::new(&mut device).map_err(|e| PartitionError::OpenDisk {
-        path: device_path.display().to_string(),
-        err: e,
-    })?;
+    // 遍历分区表，找到分区路径并格式化
+    let udisks2 = UDisks2::new().unwrap();
+    let disk = Disks::new(&udisks2);
 
     let mut efi = None;
     let mut system = None;
 
-    for i in disk.parts() {
-        if i.num() < 0 {
-            continue;
+    for d in disk.devices {
+        if d.parent.device == device_path {
+            for part in d.partitions {
+                if let Some(p) = part.partition {
+                    if p.type_ == EFI.to_string() {
+                        let e = DkPartition {
+                            path: Some(part.device),
+                            parent_path: Some(device_path.to_path_buf()),
+                            fs_type: Some("vfat".to_string()),
+                            size: part.size,
+                        };
+
+                        format_partition(&e)?;
+                        efi = Some(e);
+
+                        continue;
+                    }
+
+                    let s = DkPartition {
+                        path: Some(part.device),
+                        parent_path: Some(device_path.to_path_buf()),
+                        fs_type: Some("ext4".to_string()),
+                        size: part.size,
+                    };
+
+                    format_partition(&s)?;
+                    system = Some(s);
+                }
+            }
         }
-
-        if i.get_flag(libparted::PartitionFlag::PED_PARTITION_ESP) {
-            let e = DkPartition {
-                path: i.get_path().map(|x| x.to_path_buf()),
-                parent_path: Some(device_path.to_path_buf()),
-                fs_type: Some("vfat".to_string()),
-                size: match i.geom_length() {
-                    ..=0 => 0,
-                    x @ 1.. => x as u64 * sector_size,
-                },
-            };
-
-            format_partition(&e)?;
-            efi = Some(e);
-
-            continue;
-        }
-
-        let s = DkPartition {
-            path: i.get_path().map(|x| x.to_path_buf()),
-            parent_path: Some(device_path.to_path_buf()),
-            fs_type: Some("ext4".to_string()),
-            size: match i.geom_length() {
-                ..=0 => 0,
-                x @ 1.. => x as u64 * sector_size,
-            },
-        };
-
-        format_partition(&s)?;
-        system = Some(s);
     }
 
     let efi = efi.ok_or_else(|| PartitionError::CreatePartition {
@@ -312,42 +290,34 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
     mbr.write_into(&mut f)?;
     drop(f);
 
-    // TODO: 自己实现设备路径寻找逻辑，彻底扔掉 libparted
-    let mut device =
-        libparted::Device::new(device_path).map_err(|e| PartitionError::OpenDevice {
-            path: device_path.display().to_string(),
-            err: e,
-        })?;
+    let udisks2 = UDisks2::new().unwrap();
+    let disk = Disks::new(&udisks2);
 
-    let disk = Disk::new(&mut device).map_err(|e| PartitionError::OpenDisk {
+    for d in disk.devices {
+        if d.parent.device == device_path {
+            for part in d.partitions {
+                if let Some(p) = part.partition {
+                    if !p.is_container {
+                        let system = DkPartition {
+                            path: Some(part.device),
+                            parent_path: Some(device_path.to_path_buf()),
+                            fs_type: Some("ext4".to_string()),
+                            size: part.size,
+                        };
+
+                        format_partition(&system)?;
+
+                        return Ok(system);
+                    }
+                }
+            }
+        }
+    }
+
+    Err(PartitionError::NewDisk {
         path: device_path.display().to_string(),
-        err: e,
-    })?;
-
-    let part =
-        disk.parts()
-            .find(|x| x.num() > 0)
-            .ok_or_else(|| PartitionError::CreatePartition {
-                path: device_path.display().to_string(),
-                err: io::Error::new(
-                    io::ErrorKind::NotFound,
-                    "Failed to find created system partition",
-                ),
-            })?;
-
-    let system = DkPartition {
-        path: part.get_path().map(|x| x.to_path_buf()),
-        parent_path: Some(device_path.to_path_buf()),
-        fs_type: Some("ext4".to_string()),
-        size: match part.geom_length() {
-            ..=0 => 0,
-            x @ 1.. => x as u64 * sector_size as u64,
-        },
-    };
-
-    format_partition(&system)?;
-
-    Ok(system)
+        err: io::Error::new(ErrorKind::Other, "Failed to create new partition"),
+    })
 }
 
 fn generate_gpt_random_uuid() -> [u8; 16] {

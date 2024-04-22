@@ -685,8 +685,6 @@ dependencies = [
  "disk-types",
  "fancy-regex",
  "gptman",
- "libparted",
- "libparted-sys",
  "mbrman",
  "rand 0.8.5",
  "rustix",
