@@ -1,84 +1,52 @@
-use std::{ffi::OsString, io::Write, os::unix::ffi::OsStrExt, path::Path};
+use std::path::Path;
 
-use disk::disk_types::FileSystem;
-use fstab_generate::BlockInfo;
+use disk::partition::get_partition_uuid;
+use fstab::{FsEntry, FsTab};
+use tracing::debug;
 
 use crate::{GenFstabErrorKind, InstallError};
 
-/// Gen fstab to /etc/fstab
-pub fn genfstab_to_file(
+pub fn fstab_add_entry(
+    fstab: &mut FsTab,
     partition_path: &Path,
     fs_type: &str,
-    root_path: &Path,
     mount_path: &Path,
 ) -> Result<(), InstallError> {
-    if cfg!(debug_assertions) {
-        return Ok(());
-    }
+    let uuid_str = if fs_type != "swap" {
+        let uuid = get_partition_uuid(partition_path)
+            .ok_or_else(|| InstallError::GenFstab(GenFstabErrorKind::UUID))?;
+        let uuid_str = format!("UUID={}", uuid);
 
-    let s = fstab_entries(partition_path, fs_type, Some(mount_path))?;
-    let mut f = std::fs::OpenOptions::new()
-        .append(true)
-        .open(root_path.join("etc/fstab"))
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/fstab".to_string(),
-            err: e,
-        })?;
-
-    f.write_all(s.as_bytes())
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/fstab".to_string(),
-            err: e,
-        })?;
-
-    Ok(())
-}
-
-/// Must be used in a chroot context
-pub fn write_swap_entry_to_fstab() -> Result<(), InstallError> {
-    let s = "/swapfile none swap defaults,nofail 0 0\n";
-    let mut fstab = std::fs::OpenOptions::new()
-        .append(true)
-        .open("/etc/fstab")
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/fstab".to_string(),
-            err: e,
-        })?;
-
-    fstab
-        .write_all(s.as_bytes())
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/fstab".to_string(),
-            err: e,
-        })?;
-
-    Ok(())
-}
-
-fn fstab_entries(
-    device_path: &Path,
-    fs_type: &str,
-    mount_path: Option<&Path>,
-) -> Result<OsString, InstallError> {
-    let (fs_type, option) = match fs_type {
-        "vfat" | "fat16" | "fat32" => (FileSystem::Fat32, "defaults,nofail"),
-        "ext4" => (FileSystem::Ext4, "defaults"),
-        "btrfs" => (FileSystem::Btrfs, "defaults"),
-        "xfs" => (FileSystem::Xfs, "defaults"),
-        "f2fs" => (FileSystem::F2fs, "defaults"),
-        "swap" => (FileSystem::Swap, "sw"),
-        _ => {
-            return Err(InstallError::GenFstab(
-                GenFstabErrorKind::UnsupportedFileSystem(fs_type.to_string()),
-            ));
-        }
+        uuid_str
+    } else {
+        "/swapfile".to_string()
     };
 
-    let root_id = BlockInfo::get_partition_id(device_path, fs_type)
-        .ok_or(InstallError::GenFstab(GenFstabErrorKind::UUID))?;
-    let root = BlockInfo::new(root_id, fs_type, mount_path, option);
-    let fstab = &mut OsString::new();
-    root.write_entry(fstab);
+    let mut mount_opts = vec!["defaults".to_string()];
 
-    Ok(fstab.to_owned())
+    if ["vfat", "fat16", "fat32", "swap"].contains(&fs_type) {
+        mount_opts.push("nofail".to_string())
+    }
+
+    let pass = match fs_type {
+        "vfat" | "fat16" | "fat32" => 2,
+        "swap" => 0,
+        _ => 1,
+    };
+
+    fstab
+        .add_entry(FsEntry {
+            fs_spec: uuid_str,
+            mountpoint: mount_path.to_path_buf(),
+            vfs_type: fs_type.to_string(),
+            mount_options: mount_opts,
+            dump: false,
+            fsck_order: pass,
+        })
+        .map_err(|e| {
+            debug!("{e}");
+            InstallError::GenFstab(GenFstabErrorKind::FsEntryInvaild)
+        })?;
+
+    Ok(())
 }

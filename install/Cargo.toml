@@ -13,10 +13,10 @@ rustix = { version = "0.38", features = ["process", "fs", "mount"] }
 tracing = "0.1"
 disk = { path = "../disk" }
 libc = "0.2"
-fstab-generate = "0.1"
 reqwest = "0.12"
 tokio = { version = "1.35", features = ["rt-multi-thread", "fs"] }
 sha2 = "0.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
 hex = "0.4"
 serde_json = "1.0.111"
+fstab = "0.4.0"

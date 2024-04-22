@@ -16,7 +16,8 @@ use disk::{
 
 use download::download_file;
 use extract::extract_squashfs;
-use genfstab::genfstab_to_file;
+use fstab::FsTab;
+use genfstab::fstab_add_entry;
 use mount::mount_root_path;
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
@@ -26,7 +27,6 @@ use tracing::{debug, info};
 use crate::{
     chroot::{dive_into_guest, escape_chroot, get_dir_fd},
     dracut::execute_dracut,
-    genfstab::write_swap_entry_to_fstab,
     grub::execute_grub_install,
     hostname::set_hostname,
     locale::{set_hwclock_tc, set_locale},
@@ -129,6 +129,7 @@ pub enum PasswdIllegalKind {
 pub enum GenFstabErrorKind {
     UnsupportedFileSystem(String),
     UUID,
+    FsEntryInvaild,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -379,9 +380,9 @@ impl InstallConfig {
 
         cancel_install_exit!(cancel_install);
 
-        if self.swapfile != SwapFile::Disable {
-            write_swap_entry_to_fstab()?;
-        }
+        // if self.swapfile != SwapFile::Disable {
+        //     write_swap_entry_to_fstab()?;
+        // }
 
         cancel_install_exit!(cancel_install);
 
@@ -471,7 +472,14 @@ impl InstallConfig {
     }
 
     fn genfatab(&self, tmp_mount_path: &Path) -> Result<(), InstallError> {
-        genfstab_to_file(
+        if cfg!(debug_assertions) {
+            return Ok(());
+        }
+
+        let mut fstab = FsTab::new(&tmp_mount_path.join("etc").join("fstab"));
+
+        fstab_add_entry(
+            &mut fstab,
             self.target_partition
                 .path
                 .as_ref()
@@ -484,26 +492,31 @@ impl InstallConfig {
                 .ok_or(InstallError::PartitionValueIsNone(
                     PartitionNotSetValue::FsType,
                 ))?,
-            tmp_mount_path,
             Path::new("/"),
         )?;
 
         if let Some(ref efi_partition) = self.efi_partition {
-            genfstab_to_file(
+            fstab_add_entry(
+                &mut fstab,
                 efi_partition
                     .path
                     .as_ref()
                     .ok_or(InstallError::PartitionValueIsNone(
                         PartitionNotSetValue::Path,
                     ))?,
-                efi_partition
-                    .fs_type
-                    .as_ref()
-                    .ok_or(InstallError::PartitionValueIsNone(
-                        PartitionNotSetValue::FsType,
-                    ))?,
-                tmp_mount_path,
+                self.target_partition.fs_type.as_ref().ok_or(
+                    InstallError::PartitionValueIsNone(PartitionNotSetValue::FsType),
+                )?,
                 Path::new("/efi"),
+            )?;
+        }
+
+        if self.swapfile != SwapFile::Disable {
+            fstab_add_entry(
+                &mut fstab,
+                Path::new("/swapfile"),
+                "swap",
+                Path::new("none"),
             )?;
         }
 

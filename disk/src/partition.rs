@@ -3,6 +3,7 @@ use std::{
     io::{self, ErrorKind, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::Command,
+    str::FromStr,
 };
 
 use dbus_udisks2::{Disks, UDisks2};
@@ -412,4 +413,11 @@ pub fn all_esp_partitions() -> Vec<DkPartition> {
     }
 
     res
+}
+
+pub fn get_partition_uuid(partition_path: &Path) -> Option<Uuid> {
+    let udisks2 = UDisks2::new().unwrap();
+    let block = udisks2.get_block(&partition_path.display().to_string())?;
+
+    block.id_uuid.and_then(|x| Uuid::from_str(&x).ok())
 }
