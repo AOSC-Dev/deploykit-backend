@@ -125,15 +125,17 @@ pub fn is_efi_booted() -> bool {
 pub fn right_combine(device_path: &Path) -> Result<(), PartitionError> {
     use partition::get_partition_table_type_udisk2;
 
-    let partition_table_t = get_partition_table_type_udisk2(device_path)?;
+    let partition_table_t = get_partition_table_type_udisk2(device_path);
     let is_efi_booted = is_efi_booted();
-    if (partition_table_t == "gpt" && is_efi_booted)
-        || (partition_table_t == "dos" && !is_efi_booted)
-    {
-        return Ok(());
+
+    match partition_table_t.as_ref().map(|x| x.as_str()) {
+        Some("gpt") if is_efi_booted => return Ok(()),
+        Some("dos") | Some("msdos") if !is_efi_booted => return Ok(()),
+        None => return Ok(()),
+        _ => (),
     }
 
-    let table = Table::try_from(partition_table_t.as_str())?;
+    let table = Table::try_from(partition_table_t.unwrap().as_str())?;
 
     match table {
         Table::MBR if is_efi_booted => Err(PartitionError::WrongCombo {

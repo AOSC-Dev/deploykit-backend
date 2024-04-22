@@ -27,27 +27,18 @@ pub struct DkPartition {
 const EFI: Uuid = uuid!("C12A7328-F81F-11D2-BA4B-00A0C93EC93B");
 const LINUX_FS: Uuid = uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4");
 
-pub fn get_partition_table_type_udisk2(device_path: &Path) -> Result<String, PartitionError> {
+pub fn get_partition_table_type_udisk2(device_path: &Path) -> Option<String> {
     let udisks2 = UDisks2::new().unwrap();
     let disk = Disks::new(&udisks2);
     for d in disk.devices {
         if d.parent.device == device_path {
             if let Some(t) = d.parent.table {
-                return Ok(t.type_);
+                return Some(t.type_);
             }
         }
     }
 
-    Err(PartitionError::GetPartitionType {
-        path: device_path.display().to_string(),
-        err: io::Error::new(
-            ErrorKind::Other,
-            format!(
-                "Failed to get partition table type: {}",
-                device_path.display()
-            ),
-        ),
-    })
+    None
 }
 
 pub fn auto_create_partitions(
