@@ -29,12 +29,11 @@ const LINUX_FS: Uuid = uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4");
 
 pub fn get_partition_table_type_udisk2(device_path: &Path) -> Result<String, PartitionError> {
     let udisks2 = UDisks2::new().unwrap();
-    for block in udisks2.get_blocks() {
-        if block.device.to_str().unwrap() == device_path.display().to_string() {
-            let table = block.table;
-
-            if let Some(table) = table {
-                return Ok(table.type_);
+    let disk = Disks::new(&udisks2);
+    for d in disk.devices {
+        if d.parent.device == device_path {
+            if let Some(t) = d.parent.table {
+                return Ok(t.type_);
             }
         }
     }
