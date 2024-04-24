@@ -191,7 +191,19 @@ async fn main() -> Result<()> {
         let res = Dbus::get_auto_partition_progress(&proxy).await?;
         let res = res.data;
 
-        if res.as_str().map(|x| x == "Finish").unwrap_or(false) {
+        #[derive(Debug, Deserialize)]
+        #[serde(untagged)]
+        enum PartitionProgress {
+            Json { status: String },
+            Plain(String),
+        }
+
+        let res = match serde_json::from_value::<PartitionProgress>(res)? {
+            PartitionProgress::Json { status } => status,
+            PartitionProgress::Plain(status) => status,
+        };
+
+        if res == "Finish" {
             break;
         }
 
