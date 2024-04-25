@@ -27,6 +27,14 @@ enum DbusResult {
     Error,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "status")]
+enum AutoPartitionProgress {
+    Pending,
+    Working,
+    Finish { res: Result<Value, Value> },
+}
+
 #[proxy(
     interface = "io.aosc.Deploykit1",
     default_service = "io.aosc.Deploykit",
@@ -152,8 +160,8 @@ async fn main() -> Result<()> {
 
     Dbus::set_config(&proxy, "download", &serde_json::json!({
         "Http": {
-            "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20231016_amd64.squashfs",
-            "hash": "097839beaabba3a88c52479eca345b2636d02bcebc490997a809a9526bd44c53",
+            "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20240414_amd64.squashfs",
+            "hash": "fe99624958e33c5b5ac71b3cf88822f343fc31814655bb3e554753a7fd0c1051",
         }
         // "File": "/home/saki/squashfs"
     })
@@ -189,25 +197,20 @@ async fn main() -> Result<()> {
     // 等待分区工作完成
     loop {
         let res = Dbus::get_auto_partition_progress(&proxy).await?;
-        let res = res.data;
+        let data: AutoPartitionProgress = serde_json::from_value(res.data)?;
 
-        #[derive(Debug, Deserialize)]
-        #[serde(untagged)]
-        enum PartitionProgress {
-            Json { status: String },
-            Plain(String),
+        match data {
+            AutoPartitionProgress::Pending => println!("Pending"),
+            AutoPartitionProgress::Working => println!("Working"),
+            AutoPartitionProgress::Finish { res } => {
+                match res {
+                    Ok(_) => println!("Done"),
+                    Err(e) => eprintln!("Got Error: {e:?}"),
+                }
+                break;
+            }
         }
 
-        let res = match serde_json::from_value::<PartitionProgress>(res)? {
-            PartitionProgress::Json { status } => status,
-            PartitionProgress::Plain(status) => status,
-        };
-
-        if res == "Finish" {
-            break;
-        }
-
-        println!("Working");
         sleep(Duration::from_millis(10)).await;
     }
 
