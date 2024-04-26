@@ -73,7 +73,7 @@ pub fn swapoff(tempdir: &Path) -> Result<(), InstallError> {
     let swapfile_path = tempdir.join("swapfile");
 
     if !swapfile_path.is_file() {
-        return Ok(())
+        return Ok(());
     }
 
     run_command("swapoff", [swapfile_path])

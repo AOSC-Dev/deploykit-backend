@@ -2,8 +2,8 @@ use std::future::pending;
 
 use crate::server::DeploykitServer;
 use eyre::Result;
-use tracing::{debug, info};
 use tracing::level_filters::LevelFilter;
+use tracing::{debug, info};
 use tracing_subscriber::fmt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use zbus::ConnectionBuilder;

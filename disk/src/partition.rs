@@ -203,7 +203,7 @@ pub fn auto_create_partitions_gpt(
     clear_start_sector(&mut f, sector_size)?;
 
     // 写一个假的 MBR 保护分区头
-    GPT::write_protective_mbr_into(&mut f, sector_size).map_err(|e| PartitionError::GptMan(e))?;
+    GPT::write_protective_mbr_into(&mut f, sector_size).map_err(PartitionError::GptMan)?;
 
     // 起始扇区为 1MiB 除以扇区大小
     let starting_lba = 1024 * 1024 / sector_size;
