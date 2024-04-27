@@ -254,6 +254,7 @@ enum InstallationStage {
     ExtractSquashfs,
     GenerateFstab,
     Chroot,
+    Dracut,
     InstallGrub,
     GenerateSshKey,
     ConfigureSystem,
@@ -276,6 +277,7 @@ impl Display for InstallationStage {
             Self::ExtractSquashfs => "extract squashfs",
             Self::GenerateFstab => "generate fstab",
             Self::Chroot => "chroot",
+            Self::Dracut => "run dracut",
             Self::InstallGrub => "install grub",
             Self::GenerateSshKey => "generate ssh key",
             Self::ConfigureSystem => "configure system",
@@ -295,7 +297,8 @@ impl InstallationStage {
             Self::DownloadSquashfs => Self::ExtractSquashfs,
             Self::ExtractSquashfs => Self::GenerateFstab,
             Self::GenerateFstab => Self::Chroot,
-            Self::Chroot => Self::InstallGrub,
+            Self::Chroot => Self::Dracut,
+            Self::Dracut => Self::InstallGrub,
             Self::InstallGrub => Self::GenerateSshKey,
             Self::GenerateSshKey => Self::ConfigureSystem,
             Self::ConfigureSystem => Self::EscapeChroot,
@@ -334,7 +337,23 @@ impl InstallConfig {
 
             // Done 只是为了编码方便，并不是真正的阶段
             if !matches!(stage, InstallationStage::Done) {
-                step(stage.clone().into());
+                // GUI 用户体验需求，一些步骤不应该执行 step 回掉
+                let num = match stage {
+                    InstallationStage::SetupPartition => 1,
+                    InstallationStage::DownloadSquashfs => 2,
+                    InstallationStage::ExtractSquashfs => 3,
+                    InstallationStage::GenerateFstab => 4,
+                    InstallationStage::Chroot => 4,
+                    InstallationStage::Dracut => 5,
+                    InstallationStage::InstallGrub => 6,
+                    InstallationStage::GenerateSshKey => 7,
+                    InstallationStage::ConfigureSystem => 8,
+                    InstallationStage::EscapeChroot => 8,
+                    InstallationStage::PostInstallation => 8,
+                    InstallationStage::Done => 8
+                };
+
+                step(num);
             }
 
             let res = match stage {
@@ -362,6 +381,7 @@ impl InstallConfig {
                 InstallationStage::Chroot => {
                     self.chroot::<F2>(&progress, &tmp_mount_path, &cancel_install)
                 }
+                InstallationStage::Dracut => run_dracut(&cancel_install, &progress),
                 InstallationStage::InstallGrub => {
                     self.install_grub::<F2>(&progress, &cancel_install)
                 }
@@ -410,11 +430,6 @@ impl InstallConfig {
 
         info!("Chroot to installed system ...");
         dive_into_guest(tmp_mount_path)?;
-
-        cancel_install_exit!(cancel_install);
-
-        info!("Running dracut ...");
-        execute_dracut()?;
 
         cancel_install_exit!(cancel_install);
         progress(100.0);
@@ -663,7 +678,7 @@ impl InstallConfig {
 
         cancel_install_exit!(cancel_install);
         progress(100.0);
-        
+
         loop {
             let (process, res) = rx.recv().unwrap();
             match process {
@@ -811,4 +826,17 @@ impl InstallConfig {
 
         Ok(())
     }
+}
+
+fn run_dracut<F>(cancel_install: &Arc<AtomicBool>, progress: &Arc<F>) -> Result<(), InstallError>
+where
+    F: Fn(f64) + Send + Sync + 'static,
+{
+    info!("Running dracut ...");
+    cancel_install_exit!(cancel_install);
+    progress(0.0);
+    execute_dracut()?;
+    progress(100.0);
+    cancel_install_exit!(cancel_install);
+    Ok(())
 }
