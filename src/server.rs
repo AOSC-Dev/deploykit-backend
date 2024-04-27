@@ -19,7 +19,7 @@ use disk::{
 };
 use install::{
     chroot::{escape_chroot, get_dir_fd},
-    mount::{remove_inner_mounts, sync_disk, umount_root_path},
+    mount::{remove_files_mounts, sync_disk, umount_root_path},
     swap::{get_recommend_swap_size, swapoff},
     DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User,
 };
@@ -634,7 +634,7 @@ fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     swapoff(&tmp_dir).ok();
 
     sync_disk();
-    remove_inner_mounts(&tmp_dir);
+    remove_files_mounts(&tmp_dir).ok();
 
     let efi_path = tmp_dir.join("efi");
     if is_efi_booted() {
