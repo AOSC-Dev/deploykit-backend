@@ -40,7 +40,7 @@ fn mount_inner<P: AsRef<Path>>(
     )
     .map_err(|e| InstallError::MountFs {
         mount_point: target.display().to_string(),
-        err: io::Error::new(e.kind(), e.to_string()),
+        err: io::Error::new(e.kind(), e),
     })
 }
 
@@ -48,7 +48,7 @@ fn mount_inner<P: AsRef<Path>>(
 pub fn umount_root_path(root: &Path) -> Result<(), InstallError> {
     mount::unmount(root, mount::UnmountFlags::empty()).map_err(|e| InstallError::UmountFs {
         mount_point: root.display().to_string(),
-        err: io::Error::new(e.kind(), e.to_string()),
+        err: io::Error::new(e.kind(), e),
     })?;
 
     sync_disk();

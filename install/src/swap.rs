@@ -12,12 +12,19 @@ use crate::{utils::run_command, InstallError};
 
 pub fn get_recommend_swap_size(mem: u64) -> f64 {
     // 1073741824 is 1 * 1024 * 1024 * 1024 (1GiB => 1iB)
-    match mem {
-        x @ ..=1073741824 => (x * 2) as f64,
-        x @ 1073741825.. => {
-            let x = x as f64;
+    let max: f64 = 32.0 * 1073741824.0;
+    let res = match mem {
+        ..=1073741824 => (mem * 2) as f64,
+        1073741825.. => {
+            let x = mem as f64;
             x + x.sqrt().round()
         }
+    };
+
+    if res > max {
+        max
+    } else {
+        res
     }
 }
 
