@@ -34,11 +34,7 @@ pub fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), InstallError> 
             }
         };
         grub_install_args.push("--bootloader-id=AOSC OS".to_string());
-        grub_install_args.extend(
-            target
-                .iter()
-                .map(|x| x.to_string())
-        );
+        grub_install_args.extend(target.iter().map(|x| x.to_string()));
         if is_efi {
             grub_install_args.push("--efi-directory=/efi".to_string());
         }

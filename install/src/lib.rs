@@ -397,7 +397,7 @@ impl InstallConfig {
     fn chroot<F>(
         &self,
         progress: &F,
-        tmp_mount_path: &PathBuf,
+        tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
     ) -> Result<(), InstallError>
     where
@@ -408,7 +408,7 @@ impl InstallConfig {
         cancel_install_exit!(cancel_install);
 
         info!("Chroot to installed system ...");
-        dive_into_guest(&tmp_mount_path)?;
+        dive_into_guest(tmp_mount_path)?;
 
         cancel_install_exit!(cancel_install);
 
@@ -424,7 +424,7 @@ impl InstallConfig {
     fn generate_fstab<F>(
         &self,
         progress: &F,
-        tmp_mount_path: &PathBuf,
+        tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
     ) -> Result<(), InstallError>
     where
@@ -434,7 +434,7 @@ impl InstallConfig {
         cancel_install_exit!(cancel_install);
 
         info!("Generate /etc/fstab");
-        self.genfatab(&tmp_mount_path)?;
+        self.genfatab(tmp_mount_path)?;
 
         cancel_install_exit!(cancel_install);
         progress(100.0);
@@ -445,7 +445,7 @@ impl InstallConfig {
     fn setup_partition<F>(
         &self,
         progress: &F,
-        tmp_mount_path: &PathBuf,
+        tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
     ) -> Result<(), InstallError>
     where
@@ -456,7 +456,7 @@ impl InstallConfig {
         self.format_partitions()?;
         cancel_install_exit!(cancel_install);
 
-        self.mount_partitions(&tmp_mount_path)?;
+        self.mount_partitions(tmp_mount_path)?;
         cancel_install_exit!(cancel_install);
 
         progress(50.0);
@@ -468,11 +468,11 @@ impl InstallConfig {
                 let total_memory = sys.total_memory();
                 let size = get_recommend_swap_size(total_memory);
                 cancel_install_exit!(cancel_install);
-                create_swapfile(size, &tmp_mount_path)?;
+                create_swapfile(size, tmp_mount_path)?;
             }
             SwapFile::Custom(size) => {
                 cancel_install_exit!(cancel_install);
-                create_swapfile(size as f64, &tmp_mount_path)?;
+                create_swapfile(size as f64, tmp_mount_path)?;
             }
             SwapFile::Disable => {}
         }
@@ -510,7 +510,7 @@ impl InstallConfig {
         &self,
         progress: &F1,
         velocity: &F2,
-        tmp_mount_path: &PathBuf,
+        tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
         total_size: usize,
         squashfs_path: PathBuf,
@@ -527,8 +527,8 @@ impl InstallConfig {
             total_size as f64,
             squashfs_path,
             tmp_mount_path.to_path_buf(),
-            &*progress,
-            &*velocity,
+            progress,
+            velocity,
             cancel_install.clone(),
         )?;
 
@@ -659,11 +659,7 @@ impl InstallConfig {
         Ok(())
     }
 
-    fn post_installation<F>(
-        &self,
-        progress: &F,
-        tmp_mount_path: &PathBuf,
-    ) -> Result<(), InstallError>
+    fn post_installation<F>(&self, progress: &F, tmp_mount_path: &Path) -> Result<(), InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -671,7 +667,7 @@ impl InstallConfig {
 
         if self.swapfile != SwapFile::Disable || self.swapfile != SwapFile::Custom(0) {
             let mut retry = 1;
-            while let Err(e) = swapoff(&tmp_mount_path) {
+            while let Err(e) = swapoff(tmp_mount_path) {
                 debug!("swapoff has error: {e:?}, retry {} times", retry);
 
                 if retry == 5 {
@@ -684,7 +680,7 @@ impl InstallConfig {
         }
 
         info!("Removing mounts ...");
-        remove_files_mounts(&tmp_mount_path)?;
+        remove_files_mounts(tmp_mount_path)?;
 
         info!("Unmounting filesystems...");
 
@@ -692,7 +688,7 @@ impl InstallConfig {
             umount_root_path(&tmp_mount_path.join("efi"))?;
         }
 
-        umount_root_path(&tmp_mount_path)?;
+        umount_root_path(tmp_mount_path)?;
 
         progress(100.0);
 
