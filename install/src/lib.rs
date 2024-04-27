@@ -5,8 +5,9 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        mpsc, Arc, Mutex,
     },
+    thread,
     time::Duration,
 };
 
@@ -33,7 +34,7 @@ use crate::{
     grub::execute_grub_install,
     hostname::set_hostname,
     locale::{set_hwclock_tc, set_locale},
-    mount::{remove_files_mounts, umount_root_path},
+    mount::{remove_inner_mounts, umount_root_path},
     ssh::gen_ssh_key,
     swap::{create_swapfile, get_recommend_swap_size, swapoff},
     user::{add_new_user, passwd_set_fullname},
@@ -189,7 +190,7 @@ impl Default for InstallConfigPrepare {
 }
 
 pub struct InstallConfig {
-    local: String,
+    locale: String,
     timezone: String,
     pub download: DownloadType,
     user: User,
@@ -205,7 +206,7 @@ impl TryFrom<InstallConfigPrepare> for InstallConfig {
 
     fn try_from(value: InstallConfigPrepare) -> Result<Self, Self::Error> {
         Ok(Self {
-            local: value
+            locale: value
                 .locale
                 .ok_or(InstallError::IsNotSet(NotSetValue::Locale))?,
             timezone: value
@@ -612,32 +613,44 @@ impl InstallConfig {
 
         cancel_install_exit!(cancel_install);
 
-        if self.swapfile != SwapFile::Disable {
-            write_swap_entry_to_fstab()?;
+        let (tx, rx) = mpsc::channel();
+
+        enum Process {
+            Working,
+            Done,
         }
 
-        cancel_install_exit!(cancel_install);
+        thread::scope(|s| {
+            let mut v = vec![];
+            v.push(s.spawn(|| {
+                if self.swapfile != SwapFile::Disable {
+                    tx.send((Process::Working, write_swap_entry_to_fstab()))
+                        .unwrap();
+                }
+            }));
+            v.push(s.spawn(|| {
+                tx.send((Process::Working, set_zoneinfo(&self.timezone)))
+                    .unwrap();
+            }));
+            v.push(s.spawn(|| {
+                tx.send((Process::Working, set_hwclock_tc(!self.rtc_as_localtime)))
+                    .unwrap();
+            }));
+            v.push(s.spawn(|| {
+                tx.send((Process::Working, set_hostname(&self.hostname)))
+                    .unwrap();
+            }));
+            v.push(s.spawn(|| {
+                tx.send((Process::Working, set_locale(&self.locale)))
+                    .unwrap();
+            }));
 
-        progress(25.0);
+            for i in v {
+                i.join().unwrap();
+            }
 
-        cancel_install_exit!(cancel_install);
-
-        info!("Setting timezone as {} ...", self.timezone);
-        set_zoneinfo(&self.timezone)?;
-
-        cancel_install_exit!(cancel_install);
-
-        info!("Setting rtc_as_localtime ...");
-        set_hwclock_tc(!self.rtc_as_localtime)?;
-        progress(50.0);
-
-        cancel_install_exit!(cancel_install);
-
-        info!("Setting hostname as {}", self.hostname);
-        set_hostname(&self.hostname)?;
-        progress(75.0);
-
-        cancel_install_exit!(cancel_install);
+            tx.send((Process::Done, Ok(()))).unwrap();
+        });
 
         info!("Setting User ...");
         add_new_user(&self.user.username, &self.user.password)?;
@@ -649,14 +662,19 @@ impl InstallConfig {
         }
 
         cancel_install_exit!(cancel_install);
-
-        progress(80.0);
-
-        info!("Setting locale ...");
-        set_locale(&self.local)?;
         progress(100.0);
-
-        Ok(())
+        
+        loop {
+            let (process, res) = rx.recv().unwrap();
+            match process {
+                Process::Working => {
+                    if let Err(e) = res {
+                        return Err(e);
+                    }
+                }
+                Process::Done => return Ok(()),
+            }
+        }
     }
 
     fn post_installation<F>(&self, progress: &F, tmp_mount_path: &Path) -> Result<(), InstallError>
@@ -680,7 +698,7 @@ impl InstallConfig {
         }
 
         info!("Removing mounts ...");
-        remove_files_mounts(tmp_mount_path)?;
+        remove_inner_mounts(tmp_mount_path);
 
         info!("Unmounting filesystems...");
 

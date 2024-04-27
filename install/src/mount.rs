@@ -116,9 +116,9 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), InstallError> {
     Ok(())
 }
 
-/// Remove bind mounts
+/// Remove system partition inner mounts
 /// Note: This function should be called outside of the chroot context
-pub fn remove_files_mounts(system_path: &Path) -> Result<(), InstallError> {
+pub fn remove_inner_mounts(system_path: &Path) {
     let mut mounts = [
         "proc",
         "sys",
@@ -150,6 +150,4 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), InstallError> {
 
         debug!("{} umount result: {:?}", mount_point.display(), res);
     }
-
-    Ok(())
 }

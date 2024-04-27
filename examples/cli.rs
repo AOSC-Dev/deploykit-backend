@@ -49,6 +49,7 @@ trait Deploykit {
     async fn auto_partition(&self, dev: &str) -> zResult<String>;
     async fn start_install(&self) -> zResult<String>;
     async fn get_auto_partition_progress(&self) -> zResult<String>;
+    async fn test(&self) -> zResult<()>;
 }
 
 #[derive(Parser, Debug)]
