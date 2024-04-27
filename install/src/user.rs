@@ -66,6 +66,7 @@ fn set_full_name(
 
         if entry_username == username {
             index = Some(i);
+            break;
         }
     }
 
