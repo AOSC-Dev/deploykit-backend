@@ -10,15 +10,14 @@ use std::path::Path;
 /// Must be used in a chroot context
 #[cfg(not(target_arch = "powerpc64"))]
 pub fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), InstallError> {
-    use std::borrow::Cow;
     use tracing::warn;
 
     let mut grub_install_args = vec![];
 
     if let Some(mbr_dev) = mbr_dev {
-        grub_install_args.push(Cow::Borrowed("--target=i386-pc"));
+        grub_install_args.push("--target=i386-pc".to_string());
         let path = mbr_dev.display().to_string();
-        grub_install_args.push(Cow::Owned(path));
+        grub_install_args.push(path);
     } else {
         let (target, is_efi) = match get_arch_name() {
             Some("amd64") => (&["--target=x86_64-efi"][..], true),
@@ -34,22 +33,16 @@ pub fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), InstallError> 
                 return Ok(());
             }
         };
-        grub_install_args.push(Cow::Borrowed("--bootloader-id=AOSC OS"));
+        grub_install_args.push("--bootloader-id=AOSC OS".to_string());
         grub_install_args.extend(
             target
                 .iter()
-                .map(|x| Cow::Borrowed(x.to_owned()))
-                .collect::<Vec<_>>(),
+                .map(|x| x.to_string())
         );
         if is_efi {
-            grub_install_args.push(Cow::Borrowed("--efi-directory=/efi"));
+            grub_install_args.push("--efi-directory=/efi".to_string());
         }
     };
-
-    let grub_install_args = grub_install_args
-        .iter()
-        .map(|x| x.to_string())
-        .collect::<Vec<_>>();
 
     run_command("grub-install", grub_install_args)?;
     run_command("grub-mkconfig", ["-o", "/boot/grub/grub.cfg"])?;
