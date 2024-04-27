@@ -72,7 +72,10 @@ fn set_full_name(
 
     let index = index.ok_or(InstallError::PasswdIllegal)?;
     let mut entry = passwd[index].split(':').collect::<Vec<_>>();
+
+    // entry 结构为 USERNAME:x:1000:1001:FULLNAME:/home/USERNAME:/bin/bash
     entry[4] = full_name;
+
     passwd[index] = entry.join(":").to_owned();
 
     Ok(())
