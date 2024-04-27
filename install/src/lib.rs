@@ -78,8 +78,8 @@ pub enum InstallError {
     OperateFile { path: String, err: std::io::Error },
     #[error("Full name is illegal: {0}")]
     FullNameIllegal(String),
-    #[error("/etc/passwd is illegal, kind: {0:?}")]
-    PasswdIllegal(PasswdIllegalKind),
+    #[error("/etc/passwd is illegal")]
+    PasswdIllegal,
     #[error("Failed to generate /etc/fstab: {0:?}")]
     GenFstab(GenFstabErrorKind),
     #[error(transparent)]
