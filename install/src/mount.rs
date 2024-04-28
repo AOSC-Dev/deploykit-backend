@@ -1,5 +1,8 @@
 use disk::is_efi_booted;
-use rustix::mount::{self, MountFlags};
+use rustix::{
+    io::Errno,
+    mount::{self, MountFlags},
+};
 use std::{io, path::Path};
 use tracing::debug;
 
@@ -12,7 +15,7 @@ pub(crate) fn mount_root_path(
     partition: Option<&Path>,
     target: &Path,
     fs_type: &str,
-) -> Result<(), InstallError> {
+) -> Result<(), io::Error> {
     let mut fs_type = fs_type;
     if fs_type.starts_with("fat") {
         fs_type = "vfat";
@@ -28,7 +31,7 @@ fn mount_inner<P: AsRef<Path>>(
     target: &Path,
     fs_type: Option<&str>,
     flag: MountFlags,
-) -> Result<(), InstallError> {
+) -> Result<(), io::Error> {
     let partition = partition.as_ref().map(|p| p.as_ref());
 
     mount::mount(
@@ -38,10 +41,7 @@ fn mount_inner<P: AsRef<Path>>(
         flag,
         "",
     )
-    .map_err(|e| InstallError::MountFs {
-        mount_point: target.display().to_string(),
-        err: io::Error::new(e.kind(), e),
-    })
+    .map_err(|e| io::Error::new(e.kind(), e))
 }
 
 /// Unmount the filesystem given at `root` and then do a sync
@@ -61,7 +61,7 @@ pub fn sync_disk() {
 }
 
 /// Setup all the necessary bind mounts
-pub fn setup_files_mounts(root: &Path) -> Result<(), InstallError> {
+pub fn setup_files_mounts(root: &Path) -> Result<(), Errno> {
     mount_inner(
         Some("proc"),
         &root.join("proc"),

@@ -22,6 +22,7 @@ use genfstab::genfstab_to_file;
 use mount::mount_root_path;
 use num_enum::IntoPrimitive;
 use serde::{Deserialize, Serialize};
+use snafu::Snafu;
 use sysinfo::System;
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -43,6 +44,7 @@ use crate::{
 pub mod chroot;
 mod download;
 mod dracut;
+mod error;
 mod extract;
 mod genfstab;
 mod grub;
@@ -54,6 +56,22 @@ pub mod swap;
 mod user;
 mod utils;
 mod zoneinfo;
+
+#[derive(Debug, Snafu)]
+pub enum MountError {
+    #[snafu(display("value is not set: {t}"))]
+    ValueNotSet { t: &'static str },
+    #[snafu(display("Failed to create dir {}", path.display()))]
+    CreateDir {
+        source: std::io::Error,
+        path: PathBuf,
+    },
+    #[snafu(display("Failed to mount {}", path.display()))]
+    Mount {
+        source: std::io::Error,
+        path: PathBuf,
+    },
+}
 
 #[derive(Debug, Error)]
 pub enum InstallError {
@@ -773,23 +791,26 @@ impl InstallConfig {
         Ok(true)
     }
 
-    fn mount_partitions(&self, tmp_mount_path: &Path) -> Result<bool, InstallError> {
+    fn mount_partitions(&self, tmp_mount_path: &Path) -> Result<bool, MountError> {
+        use snafu::prelude::*;
+        let fs_type = self
+            .target_partition
+            .fs_type
+            .context(ValueNotSetSnafu { t: "fstype" })?;
+
         mount_root_path(
             self.target_partition.path.as_deref(),
             tmp_mount_path,
-            self.target_partition
-                .fs_type
-                .as_ref()
-                .ok_or(InstallError::PartitionValueIsNone(
-                    PartitionNotSetValue::FsType,
-                ))?,
-        )?;
+            &fs_type,
+        )
+        .context(MountSnafu {
+            path: self.target_partition.path.unwrap().display().to_string(),
+        })?;
 
         if let Some(ref efi) = self.efi_partition {
             let efi_mount_path = tmp_mount_path.join("efi");
-            fs::create_dir_all(&efi_mount_path).map_err(|e| InstallError::OperateFile {
-                path: efi_mount_path.display().to_string(),
-                err: e,
+            fs::create_dir_all(&efi_mount_path).context(CreateDirSnafu {
+                path: efi_mount_path,
             })?;
 
             mount_root_path(
@@ -797,16 +818,17 @@ impl InstallConfig {
                 &efi_mount_path,
                 efi.fs_type
                     .as_ref()
-                    .ok_or(InstallError::PartitionValueIsNone(
-                        PartitionNotSetValue::FsType,
-                    ))?,
-            )?;
+                    .context(ValueNotSetSnafu { t: "fstype" })?,
+            )
+            .context(MountSnafu {
+                path: efi.path.unwrap().display().to_string(),
+            })?;
         }
 
         Ok(true)
     }
 
-    fn format_partitions(&self) -> Result<bool, InstallError> {
+    fn format_partitions(&self) -> Result<bool, PartitionError> {
         format_partition(&self.target_partition)?;
 
         if let Some(ref efi) = self.efi_partition {
