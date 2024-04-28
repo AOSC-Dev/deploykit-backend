@@ -316,7 +316,7 @@ impl DeploykitServer {
         }
     }
 
-    fn start_install(&mut self, stage: u8) -> String {
+    fn start_install(&mut self) -> String {
         {
             let ps = self.progress.lock().unwrap();
             if let ProgressStatus::Working { .. } = *ps {
@@ -331,7 +331,6 @@ impl DeploykitServer {
             self.v_tx.clone(),
             self.progress.clone(),
             self.cancel_run_install.clone(),
-            if stage == 0 { None } else { Some(stage) },
         ) {
             Ok(j) => self.install_thread = Some(j),
             Err(e) => return Message::err(e),
@@ -525,7 +524,6 @@ fn start_install_inner(
     v_tx: Sender<usize>,
     ps: Arc<Mutex<ProgressStatus>>,
     cancel_install: Arc<AtomicBool>,
-    from_stage: Option<u8>,
 ) -> Result<JoinHandle<()>, DeploykitError> {
     let mut config =
         InstallConfig::try_from(config).map_err(|e| DeploykitError::Install(e.to_string()))?;
@@ -579,7 +577,6 @@ fn start_install_inner(
                     move |v| v_tx.send(v).unwrap(),
                     temp_dir,
                     cancel_install_clone,
-                    from_stage,
                 )
                 .map_err(|e| DeploykitError::Install(e.to_string()));
 

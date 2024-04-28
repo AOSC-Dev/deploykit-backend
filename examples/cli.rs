@@ -47,7 +47,7 @@ trait Deploykit {
     async fn reset_config(&self) -> zResult<String>;
     async fn get_list_devices(&self) -> zResult<String>;
     async fn auto_partition(&self, dev: &str) -> zResult<String>;
-    async fn start_install(&self, stage: u8) -> zResult<String>;
+    async fn start_install(&self) -> zResult<String>;
     async fn get_auto_partition_progress(&self) -> zResult<String>;
 }
 
@@ -114,8 +114,8 @@ impl Dbus {
         Ok(res)
     }
 
-    async fn start_install(proxy: &DeploykitProxy<'_>, stage: u8) -> Result<Self> {
-        let res = proxy.start_install(stage).await?;
+    async fn start_install(proxy: &DeploykitProxy<'_>) -> Result<Self> {
+        let res = proxy.start_install().await?;
         let res = Self::try_from(res)?;
 
         Ok(res)
@@ -234,7 +234,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    let res = Dbus::start_install(&proxy, 0).await?;
+    let res = Dbus::start_install(&proxy).await?;
 
     println!("{:?}", res);
 

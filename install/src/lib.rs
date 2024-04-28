@@ -20,7 +20,7 @@ use download::download_file;
 use extract::extract_squashfs;
 use genfstab::genfstab_to_file;
 use mount::mount_root_path;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
+use num_enum::IntoPrimitive;
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use thiserror::Error;
@@ -243,7 +243,7 @@ macro_rules! cancel_install_exit {
     };
 }
 
-#[derive(Clone, IntoPrimitive, TryFromPrimitive)]
+#[derive(Clone, IntoPrimitive)]
 #[repr(u8)]
 enum InstallationStage {
     SetupPartition = 1,
@@ -314,7 +314,6 @@ impl InstallConfig {
         velocity: F3,
         tmp_mount_path: PathBuf,
         cancel_install: Arc<AtomicBool>,
-        from_stage: Option<u8>,
     ) -> Result<bool, InstallError>
     where
         F: Fn(u8),
@@ -325,10 +324,7 @@ impl InstallConfig {
         let velocity = Arc::new(velocity);
         let root_fd = get_dir_fd(Path::new("/"))?;
 
-        let mut stage = match from_stage {
-            Some(0) | None => InstallationStage::default(),
-            Some(x) => InstallationStage::try_from(x).unwrap(),
-        };
+        let mut stage = InstallationStage::default();
 
         let mut squashfs_path = None;
         let mut squashfs_total_size = None;
@@ -340,7 +336,23 @@ impl InstallConfig {
 
             // Done 只是为了编码方便，并不是真正的阶段
             if !matches!(stage, InstallationStage::Done) {
-                step(stage.clone().into());
+                // GUI 用户体验需求，一些步骤不应该执行 step 回掉
+                let num = match stage {
+                    InstallationStage::SetupPartition => 1,
+                    InstallationStage::DownloadSquashfs => 2,
+                    InstallationStage::ExtractSquashfs => 3,
+                    InstallationStage::GenerateFstab => 4,
+                    InstallationStage::Chroot => 4,
+                    InstallationStage::Dracut => 5,
+                    InstallationStage::InstallGrub => 6,
+                    InstallationStage::GenerateSshKey => 7,
+                    InstallationStage::ConfigureSystem => 8,
+                    InstallationStage::EscapeChroot => 8,
+                    InstallationStage::PostInstallation => 8,
+                    InstallationStage::Done => 8,
+                };
+
+                step(num);
             }
 
             let res = match stage {
