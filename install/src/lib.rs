@@ -86,8 +86,6 @@ pub enum InstallError {
     Reqwest(#[from] reqwest::Error),
     #[error("Failed to download squashfs, checksum mismatch")]
     ChecksumMisMatch,
-    #[error("Failed to create tokio runtime: {0}")]
-    CreateTokioRuntime(std::io::Error),
     #[error("Value {0:?} is not set")]
     IsNotSet(NotSetValue),
     #[error(transparent)]
@@ -355,9 +353,9 @@ impl InstallConfig {
                     Arc::clone(&cancel_install),
                     (&mut squashfs_path, &mut squashfs_total_size),
                 ),
-                InstallationStage::ExtractSquashfs => self.extract_squashfs::<F2, F3>(
-                    &progress,
-                    &velocity,
+                InstallationStage::ExtractSquashfs => self.extract_squashfs(
+                    progress.as_ref(),
+                    velocity.as_ref(),
                     &tmp_mount_path,
                     &cancel_install,
                     // 若能进行到这一步，则 squashfs_total_size 一定有值，故 unwrap 安全
