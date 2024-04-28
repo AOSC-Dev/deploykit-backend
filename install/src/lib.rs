@@ -240,7 +240,7 @@ impl TryFrom<InstallConfigPrepare> for InstallConfig {
 macro_rules! cancel_install_exit {
     ($cancel_install:ident) => {
         if $cancel_install.load(Ordering::SeqCst) {
-            return Ok(());
+            return Ok(false);
         }
     };
 }
@@ -316,7 +316,7 @@ impl InstallConfig {
         velocity: F3,
         tmp_mount_path: PathBuf,
         cancel_install: Arc<AtomicBool>,
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F: Fn(u8),
         F2: Fn(f64) + Send + Sync + 'static,
@@ -400,7 +400,8 @@ impl InstallConfig {
             };
 
             stage = match res {
-                Ok(()) => stage.get_next_stage(),
+                Ok(true) => stage.get_next_stage(),
+                Ok(false) => return Ok(false),
                 Err(e) => {
                     warn!("Error occured in step {stage}: {e}");
 
@@ -411,7 +412,7 @@ impl InstallConfig {
             };
         }
 
-        Ok(())
+        Ok(true)
     }
 
     fn chroot<F>(
@@ -419,7 +420,7 @@ impl InstallConfig {
         progress: &F,
         tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -433,7 +434,7 @@ impl InstallConfig {
         cancel_install_exit!(cancel_install);
         progress(100.0);
 
-        Ok(())
+        Ok(true)
     }
 
     fn generate_fstab<F>(
@@ -441,7 +442,7 @@ impl InstallConfig {
         progress: &F,
         tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -454,7 +455,7 @@ impl InstallConfig {
         cancel_install_exit!(cancel_install);
         progress(100.0);
 
-        Ok(())
+        Ok(true)
     }
 
     fn setup_partition<F>(
@@ -462,7 +463,7 @@ impl InstallConfig {
         progress: &F,
         tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -494,7 +495,7 @@ impl InstallConfig {
 
         progress(100.0);
 
-        Ok(())
+        Ok(true)
     }
 
     fn download_squashfs<F1, F2>(
@@ -503,7 +504,7 @@ impl InstallConfig {
         velocity: Arc<F2>,
         cancel_install: Arc<AtomicBool>,
         res: (&mut Option<PathBuf>, &mut Option<usize>),
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F1: Fn(f64) + Send + Sync + 'static,
         F2: Fn(usize) + Send + Sync + 'static,
@@ -518,7 +519,7 @@ impl InstallConfig {
         *res.0 = Some(squashfs_path);
         *res.1 = Some(total_size);
 
-        Ok(())
+        Ok(true)
     }
 
     fn extract_squashfs<F1, F2>(
@@ -529,7 +530,7 @@ impl InstallConfig {
         cancel_install: &Arc<AtomicBool>,
         total_size: usize,
         squashfs_path: PathBuf,
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F1: Fn(f64) + Send + Sync + 'static,
         F2: Fn(usize) + Send + Sync + 'static,
@@ -551,14 +552,14 @@ impl InstallConfig {
 
         velocity(0);
 
-        Ok(())
+        Ok(true)
     }
 
     fn install_grub<F>(
         &self,
         progress: &F,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -571,14 +572,14 @@ impl InstallConfig {
         cancel_install_exit!(cancel_install);
         progress(100.0);
 
-        Ok(())
+        Ok(true)
     }
 
     fn generate_ssh_key<F>(
         &self,
         progress: &F,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -591,7 +592,7 @@ impl InstallConfig {
         cancel_install_exit!(cancel_install);
         progress(100.0);
 
-        Ok(())
+        Ok(true)
     }
 
     fn escape_chroot<F>(
@@ -599,7 +600,7 @@ impl InstallConfig {
         progress: &F,
         cancel_install: &Arc<AtomicBool>,
         root_fd: &OwnedFd,
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -612,14 +613,14 @@ impl InstallConfig {
 
         progress(100.0);
 
-        Ok(())
+        Ok(true)
     }
 
     fn configure_system<F>(
         &self,
         progress: &F,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<(), InstallError>
+    ) -> Result<bool, InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -671,10 +672,10 @@ impl InstallConfig {
         set_locale(&self.local)?;
         progress(100.0);
 
-        Ok(())
+        Ok(true)
     }
 
-    fn post_installation<F>(&self, progress: &F, tmp_mount_path: &Path) -> Result<(), InstallError>
+    fn post_installation<F>(&self, progress: &F, tmp_mount_path: &Path) -> Result<bool, InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -707,10 +708,10 @@ impl InstallConfig {
 
         progress(100.0);
 
-        Ok(())
+        Ok(true)
     }
 
-    fn install_grub_impl(&self) -> Result<(), InstallError> {
+    fn install_grub_impl(&self) -> Result<bool, InstallError> {
         if self.efi_partition.is_some() {
             info!("Installing grub to UEFI partition ...");
             execute_grub_install(None)?;
@@ -719,10 +720,10 @@ impl InstallConfig {
             execute_grub_install(Some(self.target_partition.parent_path.as_ref().unwrap()))?;
         }
 
-        Ok(())
+        Ok(true)
     }
 
-    fn genfatab(&self, tmp_mount_path: &Path) -> Result<(), InstallError> {
+    fn genfatab(&self, tmp_mount_path: &Path) -> Result<bool, InstallError> {
         genfstab_to_file(
             self.target_partition
                 .path
@@ -759,10 +760,10 @@ impl InstallConfig {
             )?;
         }
 
-        Ok(())
+        Ok(true)
     }
 
-    fn mount_partitions(&self, tmp_mount_path: &Path) -> Result<(), InstallError> {
+    fn mount_partitions(&self, tmp_mount_path: &Path) -> Result<bool, InstallError> {
         mount_root_path(
             self.target_partition.path.as_deref(),
             tmp_mount_path,
@@ -792,10 +793,10 @@ impl InstallConfig {
             )?;
         }
 
-        Ok(())
+        Ok(true)
     }
 
-    fn format_partitions(&self) -> Result<(), InstallError> {
+    fn format_partitions(&self) -> Result<bool, InstallError> {
         format_partition(&self.target_partition)?;
 
         if let Some(ref efi) = self.efi_partition {
@@ -806,11 +807,11 @@ impl InstallConfig {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 }
 
-fn run_dracut<F>(cancel_install: &Arc<AtomicBool>, progress: &Arc<F>) -> Result<(), InstallError>
+fn run_dracut<F>(cancel_install: &Arc<AtomicBool>, progress: &Arc<F>) -> Result<bool, InstallError>
 where
     F: Fn(f64) + Send + Sync + 'static,
 {
@@ -820,5 +821,5 @@ where
     execute_dracut()?;
     progress(100.0);
     cancel_install_exit!(cancel_install);
-    Ok(())
+    Ok(true)
 }
