@@ -24,7 +24,7 @@ use num_enum::IntoPrimitive;
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use thiserror::Error;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info};
 
 use crate::{
     chroot::{dive_into_guest, escape_chroot, get_dir_fd},
@@ -331,6 +331,8 @@ impl InstallConfig {
         let mut squashfs_path = None;
         let mut squashfs_total_size = None;
 
+        let mut error_retry = 1;
+
         loop {
             debug!("Current stage: {stage}");
 
@@ -403,7 +405,13 @@ impl InstallConfig {
                 Ok(v) if v => stage.get_next_stage(),
                 Ok(_) => break,
                 Err(e) => {
-                    warn!("Error occured in step {stage}: {e}");
+                    error!("Error occured in step {stage}: {e}");
+
+                    if error_retry == 3 {
+                        return Err(e);
+                    }
+
+                    error_retry += 1;
 
                     // TODO: 暂停安装，错误处理逻辑。目前临时的占位方案是等待并重试
                     std::thread::sleep(Duration::from_secs(10));
