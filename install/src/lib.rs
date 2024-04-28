@@ -22,7 +22,8 @@ use genfstab::genfstab_to_file;
 use mount::mount_root_path;
 use num_enum::IntoPrimitive;
 use serde::{Deserialize, Serialize};
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
+use swap::SwapFileError;
 use sysinfo::System;
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -44,7 +45,6 @@ use crate::{
 pub mod chroot;
 mod download;
 mod dracut;
-mod error;
 mod extract;
 mod genfstab;
 mod grub;
@@ -67,11 +67,22 @@ pub enum MountError {
         path: PathBuf,
     },
     #[snafu(display("Failed to mount {}", path.display()))]
-    Mount {
+    MountRoot {
         source: std::io::Error,
         path: PathBuf,
     },
 }
+
+#[derive(Debug, Snafu)]
+pub enum SetupPartitionError {
+    #[snafu(display("Failed to format partition"))]
+    Format { source: PartitionError },
+    #[snafu(display("Failed to mount partition"))]
+    Mount { source: MountError },
+    #[snafu(display("Failed to create swap file"))]
+    SwapFile { source: SwapFileError },
+}
+
 
 #[derive(Debug, Error)]
 pub enum InstallError {
@@ -487,16 +498,16 @@ impl InstallConfig {
         progress: &F,
         tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, SetupPartitionError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
         progress(0.0);
 
-        self.format_partitions()?;
+        self.format_partitions().context(FormatSnafu)?;
         cancel_install_exit!(cancel_install);
 
-        self.mount_partitions(tmp_mount_path)?;
+        self.mount_partitions(tmp_mount_path).context(MountSnafu)?;
         cancel_install_exit!(cancel_install);
 
         progress(50.0);
@@ -803,8 +814,10 @@ impl InstallConfig {
             tmp_mount_path,
             &fs_type,
         )
-        .context(MountSnafu {
-            path: self.target_partition.path.unwrap().display().to_string(),
+        .context(MountRootSnafu {
+            path: self.target_partition.path.context(ValueNotSetSnafu {
+                t: "system mount path",
+            })?,
         })?;
 
         if let Some(ref efi) = self.efi_partition {
@@ -820,8 +833,10 @@ impl InstallConfig {
                     .as_ref()
                     .context(ValueNotSetSnafu { t: "fstype" })?,
             )
-            .context(MountSnafu {
-                path: efi.path.unwrap().display().to_string(),
+            .context(MountRootSnafu {
+                path: efi.path.context(ValueNotSetSnafu {
+                    t: "efi mount path",
+                })?,
             })?;
         }
 

@@ -1,12 +1,22 @@
 use std::fmt::Debug;
-use std::io;
 use std::{ffi::OsStr, process::Command};
 
+use snafu::{ResultExt, Snafu};
 use tracing::info;
 
-use crate::InstallError;
+#[derive(Debug, Snafu)]
+pub enum RunCmdError {
+    #[snafu(display("Failed to execute command: {cmd}"))]
+    Exec { cmd: String, source: std::io::Error },
+    #[snafu(display("return non-zero value run command: {cmd}"))]
+    RunFailed {
+        cmd: String,
+        stdout: String,
+        stderr: String,
+    },
+}
 
-pub(crate) fn run_command<I, S>(command: &str, args: I) -> Result<(), InstallError>
+pub(crate) fn run_command<I, S>(command: &str, args: I) -> Result<(), RunCmdError>
 where
     I: IntoIterator<Item = S> + Debug,
     S: AsRef<OsStr>,
@@ -17,15 +27,13 @@ where
     let cmd = Command::new(command)
         .args(args)
         .output()
-        .map_err(|e| InstallError::RunCommand {
-            command: cmd_str.clone(),
-            err: e,
-        })?;
+        .context(ExecSnafu { cmd: cmd_str })?;
 
     if !cmd.status.success() {
-        return Err(InstallError::RunCommand {
-            command: cmd_str,
-            err: io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&cmd.stderr)),
+        return Err(RunCmdError::RunFailed {
+            cmd: cmd_str,
+            stdout: String::from_utf8_lossy(&cmd.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&cmd.stderr).to_string(),
         });
     }
 

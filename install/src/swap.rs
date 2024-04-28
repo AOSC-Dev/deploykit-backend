@@ -2,13 +2,40 @@ use std::{
     fs::File,
     io::{self, Write},
     os::unix::fs::PermissionsExt,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
-use rustix::{fd::AsRawFd, fs::FallocateFlags, io::Errno};
+use rustix::{fd::AsRawFd, fs::FallocateFlags};
+use snafu::{ResultExt, Snafu};
 use tracing::info;
 
-use crate::{utils::run_command, InstallError};
+use crate::utils::{run_command, RunCmdError};
+
+#[derive(Debug, Snafu)]
+pub enum SwapFileError {
+    #[snafu(display("Failed to create swap file: {}", path.display()))]
+    CreateFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("Failed to fallocate swap file: {}", path.display()))]
+    Fallocate {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("Failed to flush swap file: {}", path.display()))]
+    FlushSwapFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("Failed to set swap file permissions: {}", path.display()))]
+    SetPermission {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[snafu(display("Failed to run swapon"))]
+    Mkswap { source: RunCmdError },
+}
 
 pub fn get_recommend_swap_size(mem: u64) -> f64 {
     // 1073741824 is 1 * 1024 * 1024 * 1024 (1GiB => 1iB)
@@ -29,13 +56,12 @@ pub fn get_recommend_swap_size(mem: u64) -> f64 {
 }
 
 /// Create swapfile
-pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), InstallError> {
+pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), SwapFileError> {
     let swap_path = tempdir.join("swapfile");
 
     info!("Creating swapfile");
-    let mut swapfile = File::create(&swap_path).map_err(|e| InstallError::OperateFile {
-        path: swap_path.display().to_string(),
-        err: e,
+    let mut swapfile = File::create(&swap_path).context(CreateFileSnafu {
+        path: swap_path.to_path_buf(),
     })?;
 
     let res = unsafe {
@@ -48,40 +74,37 @@ pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), InstallEr
     };
 
     if res != 0 {
-        return Err(InstallError::OperateFile {
-            path: swap_path.display().to_string(),
-            err: io::Error::new(
-                Errno::from_raw_os_error(res).kind(),
-                "Failed to create swapfile",
-            ),
+        return Err(SwapFileError::Fallocate {
+            path: swap_path.to_path_buf(),
+            source: io::Error::from_raw_os_error(res),
         });
     }
 
-    swapfile.flush().map_err(|e| InstallError::OperateFile {
-        path: swap_path.display().to_string(),
-        err: e,
+    swapfile.flush().context(FlushSwapFileSnafu {
+        path: swap_path.to_path_buf(),
     })?;
 
     info!("Set swapfile permission as 600");
-    std::fs::set_permissions(&swap_path, std::fs::Permissions::from_mode(0o600)).map_err(|e| {
-        InstallError::OperateFile {
-            path: swap_path.display().to_string(),
-            err: e,
-        }
-    })?;
+    std::fs::set_permissions(&swap_path, std::fs::Permissions::from_mode(0o600)).context(
+        SetPermissionSnafu {
+            path: swap_path.to_path_buf(),
+        },
+    )?;
 
-    run_command("mkswap", [&swap_path])?;
+    run_command("mkswap", [&swap_path]).context(MkswapSnafu)?;
     run_command("swapon", [swap_path]).ok();
 
     Ok(())
 }
 
-pub fn swapoff(tempdir: &Path) -> Result<(), InstallError> {
+pub fn swapoff(tempdir: &Path) -> Result<(), RunCmdError> {
     let swapfile_path = tempdir.join("swapfile");
 
     if !swapfile_path.is_file() {
         return Ok(());
     }
 
-    run_command("swapoff", [swapfile_path])
+    run_command("swapoff", [swapfile_path])?;
+
+    Ok(())
 }
