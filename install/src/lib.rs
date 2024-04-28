@@ -375,26 +375,26 @@ impl InstallConfig {
                     squashfs_path.clone().unwrap(),
                 ),
                 InstallationStage::GenerateFstab => {
-                    self.generate_fstab::<F2>(&progress, &tmp_mount_path, &cancel_install)
+                    self.generate_fstab(progress.as_ref(), &tmp_mount_path, &cancel_install)
                 }
                 InstallationStage::Chroot => {
-                    self.chroot::<F2>(&progress, &tmp_mount_path, &cancel_install)
+                    self.chroot(progress.as_ref(), &tmp_mount_path, &cancel_install)
                 }
                 InstallationStage::Dracut => run_dracut(&cancel_install, &progress),
                 InstallationStage::InstallGrub => {
-                    self.install_grub::<F2>(&progress, &cancel_install)
+                    self.install_grub(progress.as_ref(), &cancel_install)
                 }
                 InstallationStage::GenerateSshKey => {
-                    self.generate_ssh_key::<F2>(&progress, &cancel_install)
+                    self.generate_ssh_key(progress.as_ref(), &cancel_install)
                 }
                 InstallationStage::ConfigureSystem => {
-                    self.configure_system::<F2>(&progress, &cancel_install)
+                    self.configure_system(progress.as_ref(), &cancel_install)
                 }
                 InstallationStage::EscapeChroot => {
-                    self.escape_chroot::<F2>(&progress, &cancel_install, &root_fd)
+                    self.escape_chroot(progress.as_ref(), &cancel_install, &root_fd)
                 }
                 InstallationStage::PostInstallation => {
-                    self.post_installation::<F2>(&progress, &tmp_mount_path)
+                    self.post_installation(progress.as_ref(), &tmp_mount_path)
                 }
                 InstallationStage::Done => break,
             };
