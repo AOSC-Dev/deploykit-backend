@@ -349,7 +349,7 @@ impl InstallConfig {
                     InstallationStage::ConfigureSystem => 8,
                     InstallationStage::EscapeChroot => 8,
                     InstallationStage::PostInstallation => 8,
-                    InstallationStage::Done => 8
+                    InstallationStage::Done => 8,
                 };
 
                 step(num);
@@ -400,8 +400,8 @@ impl InstallConfig {
             };
 
             stage = match res {
-                Ok(true) => stage.get_next_stage(),
-                Ok(false) => return Ok(false),
+                Ok(v) if v => stage.get_next_stage(),
+                Ok(_) => break,
                 Err(e) => {
                     warn!("Error occured in step {stage}: {e}");
 
@@ -675,7 +675,11 @@ impl InstallConfig {
         Ok(true)
     }
 
-    fn post_installation<F>(&self, progress: &F, tmp_mount_path: &Path) -> Result<bool, InstallError>
+    fn post_installation<F>(
+        &self,
+        progress: &F,
+        tmp_mount_path: &Path,
+    ) -> Result<bool, InstallError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
