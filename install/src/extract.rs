@@ -1,12 +1,11 @@
 use std::{
+    io,
     path::Path,
     sync::{atomic::AtomicBool, Arc},
     time::Instant,
 };
 
 use sysinfo::System;
-
-use crate::InstallError;
 
 /// Extract the .squashfs and callback download progress
 pub(crate) fn extract_squashfs<F, F2, P>(
@@ -16,7 +15,7 @@ pub(crate) fn extract_squashfs<F, F2, P>(
     progress: F,
     velocity: F2,
     cancel_install: Arc<AtomicBool>,
-) -> Result<(), InstallError>
+) -> Result<(), io::Error>
 where
     F: Fn(f64),
     F2: Fn(usize),
@@ -46,8 +45,7 @@ where
             v_download_len += file_size * count as f64 / 100.0;
         },
         cancel_install,
-    )
-    .map_err(InstallError::Unpack)?;
+    )?;
 
     Ok(())
 }

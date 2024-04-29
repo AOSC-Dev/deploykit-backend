@@ -1,9 +1,9 @@
-use crate::InstallError;
+use crate::utils::RunCmdError;
 
 /// Runs dracut
 /// Must be used in a chroot context
 #[cfg(not(feature = "is_retro"))]
-pub fn execute_dracut() -> Result<(), InstallError> {
+pub fn execute_dracut() -> Result<(), RunCmdError> {
     use crate::utils::run_command;
 
     let cmd = "/usr/bin/update-initramfs";
@@ -15,7 +15,7 @@ pub fn execute_dracut() -> Result<(), InstallError> {
 /// Runs dracut (dummy function for retro mode)
 /// Must be used in a chroot context
 #[cfg(feature = "is_retro")]
-pub fn execute_dracut() -> Result<()> {
+pub fn execute_dracut() -> Result<(), RunCmdError> {
     no_need_to_run_info("dracut", true);
 
     Ok(())
