@@ -1,45 +1,54 @@
 use std::{
-    io::{self, Read, Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom, Write},
     process::{Command, Stdio},
 };
 
+use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use tracing::info;
 
-use crate::{utils::run_command, InstallError};
+use crate::utils::{run_command, RunCmdError};
+
+#[derive(Debug, Snafu)]
+pub enum SetFullNameError {
+    #[snafu(display("Failed to open /etc/passwd"))]
+    OperatePasswdFile { source: std::io::Error },
+    #[snafu(display("Fullname is illegal: {fullname}"))]
+    Illegal { fullname: String },
+    #[snafu(display("/etc/passwd is broken"))]
+    BrokenPassswd,
+}
+
+#[derive(Debug, Snafu)]
+pub enum AddUserError {
+    #[snafu(transparent)]
+    RunCommand { source: RunCmdError },
+    #[snafu(display("Failed to execute chpasswd"))]
+    ExecChpasswd { source: std::io::Error },
+    #[snafu(display("Failed to get chpasswd stdin"))]
+    ChpasswdStdin,
+    #[snafu(display("Failed to write chpasswd stdin"))]
+    WriteChpasswdStdin { source: std::io::Error },
+    #[snafu(display("Failed to flush chpasswd stdin"))]
+    FlushChpasswdStdin { source: std::io::Error },
+}
 
 /// Sets Fullname
 /// Must be used in a chroot context
-pub fn passwd_set_fullname(full_name: &str, username: &str) -> Result<(), InstallError> {
+pub fn passwd_set_fullname(full_name: &str, username: &str) -> Result<(), SetFullNameError> {
     let mut f = std::fs::OpenOptions::new()
         .write(true)
         .read(true)
         .open("/etc/passwd")
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/passwd".to_string(),
-            err: e,
-        })?;
+        .context(OperatePasswdFileSnafu)?;
 
     let mut buf = String::new();
-    f.read_to_string(&mut buf)
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/passwd".to_string(),
-            err: e,
-        })?;
-
+    f.read_to_string(&mut buf).context(OperatePasswdFileSnafu)?;
     let mut passwd = buf.split('\n').map(|x| x.to_string()).collect::<Vec<_>>();
 
     set_full_name(full_name, username, &mut passwd)?;
-    f.seek(SeekFrom::Start(0))
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/passwd".to_string(),
-            err: e,
-        })?;
-
+    f.seek(SeekFrom::Start(0)).context(OperatePasswdFileSnafu)?;
     f.write_all(passwd.join("\n").as_bytes())
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/passwd".to_string(),
-            err: e,
-        })?;
+        .context(OperatePasswdFileSnafu)?;
 
     Ok(())
 }
@@ -48,11 +57,14 @@ fn set_full_name(
     full_name: &str,
     username: &str,
     passwd: &mut [String],
-) -> Result<(), InstallError> {
+) -> Result<(), SetFullNameError> {
     for i in [':', '\n'] {
-        if full_name.contains(i) {
-            return Err(InstallError::FullNameIllegal(full_name.to_string()));
-        }
+        ensure!(
+            !full_name.contains(i),
+            IllegalSnafu {
+                fullname: full_name.to_string()
+            }
+        );
     }
 
     let mut index = None;
@@ -62,7 +74,7 @@ fn set_full_name(
             continue;
         }
 
-        let (entry_username, _) = c.split_once(':').ok_or(InstallError::PasswdIllegal)?;
+        let (entry_username, _) = c.split_once(':').context(BrokenPassswdSnafu)?;
 
         if entry_username == username {
             index = Some(i);
@@ -70,7 +82,7 @@ fn set_full_name(
         }
     }
 
-    let index = index.ok_or(InstallError::PasswdIllegal)?;
+    let index = index.context(BrokenPassswdSnafu)?;
     let mut entry = passwd[index].split(':').collect::<Vec<_>>();
 
     // entry 结构为 USERNAME:x:1000:1001:FULLNAME:/home/USERNAME:/bin/bash
@@ -83,7 +95,7 @@ fn set_full_name(
 
 /// Adds a new normal user to the guest environment
 /// Must be used in a chroot context
-pub fn add_new_user(name: &str, password: &str) -> Result<(), InstallError> {
+pub fn add_new_user(name: &str, password: &str) -> Result<(), AddUserError> {
     run_command("useradd", ["-m", "-s", "/bin/bash", name])?;
     run_command("usermod", ["-aG", "audio,cdrom,video,wheel,plugdev", name])?;
 
@@ -92,32 +104,20 @@ pub fn add_new_user(name: &str, password: &str) -> Result<(), InstallError> {
     Ok(())
 }
 
-pub fn chpasswd(name: &str, password: &str) -> Result<(), InstallError> {
+pub fn chpasswd(name: &str, password: &str) -> Result<(), AddUserError> {
     info!("Running chpasswd ...");
     let command = Command::new("chpasswd")
         .stdin(Stdio::piped())
         .spawn()
-        .map_err(|e| InstallError::RunCommand {
-            command: "chpasswd".to_string(),
-            err: e,
-        })?;
+        .context(ExecChpasswdSnafu)?;
 
-    let mut stdin = command.stdin.ok_or(InstallError::RunCommand {
-        command: "chpasswd".to_string(),
-        err: io::Error::new(io::ErrorKind::NotFound, "stdin is None"),
-    })?;
+    let mut stdin = command.stdin.context(ChpasswdStdinSnafu)?;
 
     stdin
         .write_all(format!("{name}:{password}\n").as_bytes())
-        .map_err(|e| InstallError::RunCommand {
-            command: "chpasswd".to_string(),
-            err: e,
-        })?;
+        .context(WriteChpasswdStdinSnafu)?;
 
-    stdin.flush().map_err(|e| InstallError::RunCommand {
-        command: "chpasswd".to_string(),
-        err: e,
-    })?;
+    stdin.flush().context(FlushChpasswdStdinSnafu)?;
 
     info!("Running chpasswd successfully");
 
