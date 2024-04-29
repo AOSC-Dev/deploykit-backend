@@ -1,48 +1,41 @@
 use std::{
     fs::File,
-    io::{Read, Write},
+    io::{self, Read, Write},
 };
 
+use snafu::{ResultExt, Snafu};
 use tracing::info;
 
-use crate::{utils::run_command, InstallError};
+use crate::utils::{run_command, RunCmdError};
+
+#[derive(Debug, Snafu)]
+pub enum SetHwclockError {
+    #[snafu(display("Failed to operate /etc/adjtime"))]
+    OperateAdjtimeFile { source: std::io::Error },
+    #[snafu(transparent)]
+    RunCommand { source: RunCmdError },
+}
 
 /// Sets locale in the guest environment
 /// Must be used in a chroot context
-pub fn set_locale(locale: &str) -> Result<(), InstallError> {
-    let mut f = File::create("/etc/locale.conf").map_err(|e| InstallError::OperateFile {
-        path: "/etc/locale.conf".to_string(),
-        err: e,
-    })?;
-
-    f.write_all(b"LANG=")
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/locale.conf".to_string(),
-            err: e,
-        })?;
-
-    f.write_all(format!("{locale}\n").as_bytes())
-        .map_err(|e| InstallError::OperateFile {
-            path: "/etc/locale.conf".to_string(),
-            err: e,
-        })?;
+pub fn set_locale(locale: &str) -> Result<(), io::Error> {
+    let mut f = File::create("/etc/locale.conf")?;
+    f.write_all(b"LANG=")?;
+    f.write_all(format!("{locale}\n").as_bytes())?;
 
     Ok(())
 }
 
 /// Sets utc/rtc time in the guest environment
 /// Must be used in a chroot context
-pub fn set_hwclock_tc(utc: bool) -> Result<(), InstallError> {
+pub fn set_hwclock_tc(utc: bool) -> Result<(), SetHwclockError> {
     let adjtime_file = std::fs::File::open("/etc/adjtime");
     let status_is_rtc = if let Ok(mut adjtime_file) = adjtime_file {
         let mut buf = String::new();
 
         adjtime_file
             .read_to_string(&mut buf)
-            .map_err(|e| InstallError::OperateFile {
-                path: "/etc/adjtime".to_string(),
-                err: e,
-            })?;
+            .context(OperateAdjtimeFileSnafu)?;
 
         let line: Vec<&str> = buf.split('\n').collect();
         if line.len() < 3 || line.get(2) == Some(&"UTC") {

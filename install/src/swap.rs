@@ -33,8 +33,8 @@ pub enum SwapFileError {
         path: PathBuf,
         source: std::io::Error,
     },
-    #[snafu(display("Failed to run swapon"))]
-    Mkswap { source: RunCmdError },
+    #[snafu(display("Failed to run mkswap {}", path.display()))]
+    Mkswap { path: PathBuf, source: RunCmdError },
 }
 
 pub fn get_recommend_swap_size(mem: u64) -> f64 {
@@ -91,7 +91,7 @@ pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), SwapFileE
         },
     )?;
 
-    run_command("mkswap", [&swap_path]).context(MkswapSnafu)?;
+    run_command("mkswap", [&swap_path]).context(MkswapSnafu { path: swap_path })?;
     run_command("swapon", [swap_path]).ok();
 
     Ok(())
