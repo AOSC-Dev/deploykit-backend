@@ -1,15 +1,22 @@
+use snafu::Snafu;
 use tracing::info;
 
-use crate::{
-    utils::{get_arch_name, run_command},
-    InstallError,
-};
+use crate::utils::RunCmdError;
+use crate::utils::{get_arch_name, run_command};
 use std::path::Path;
+
+#[derive(Debug, Snafu)]
+pub enum RunGrubError {
+    #[snafu(transparent)]
+    RunCommand { source: RunCmdError },
+    #[snafu(display("Failed to open /proc/cpuinfo"))]
+    OpenCpuInfo { source: std::io::Error },
+}
 
 /// Runs grub-install and grub-mkconfig
 /// Must be used in a chroot context
 #[cfg(not(target_arch = "powerpc64"))]
-pub fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), InstallError> {
+pub fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), RunCmdError> {
     use tracing::warn;
 
     let mut grub_install_args = vec![];
@@ -47,17 +54,13 @@ pub fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), InstallError> 
 }
 
 #[cfg(target_arch = "powerpc64")]
-pub fn execute_grub_install(_mbr_dev: Option<&Path>) -> Result<(), InstallError> {
+pub fn execute_grub_install(_mbr_dev: Option<&Path>) -> Result<(), RunGrubError> {
+    use snafu::ResultExt;
     use std::io::BufRead;
     use std::io::BufReader;
 
     let target = get_arch_name();
-
-    let cpuinfo = std::fs::File::open("/proc/cpuinfo").map_err(|e| InstallError::OperateFile {
-        path: "/proc/cpuinfo".to_string(),
-        err: e,
-    })?;
-
+    let cpuinfo = std::fs::File::open("/proc/cpuinfo").context(OpenCpuInfoSnafu)?;
     let r = BufReader::new(cpuinfo);
 
     let find = r.lines().flatten().find(|x| x.starts_with("firmware"));
