@@ -1212,7 +1212,6 @@ dependencies = [
  "sha2",
  "snafu",
  "sysinfo",
- "thiserror",
  "tokio",
  "tracing",
  "unsquashfs-wrapper",

@@ -30,7 +30,7 @@ pub fn set_zoneinfo(zone: &str) -> Result<(), SetZoneinfoError> {
     };
 
     let zone_path = PathBuf::from("/usr/share/zoneinfo").join(zone);
-    symlink(zone_path, "/etc/localtime").context(SymlinkSnafu { path: zone_path })?;
+    symlink(&zone_path, "/etc/localtime").context(SymlinkSnafu { path: zone_path })?;
 
     Ok(())
 }

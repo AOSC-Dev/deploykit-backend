@@ -10,24 +10,28 @@ use std::{
     time::Duration,
 };
 
+use chroot::ChrootError;
 use disk::{
     is_efi_booted,
     partition::{format_partition, DkPartition},
     PartitionError,
 };
 
-use download::download_file;
+use download::{download_file, DownloadError};
 use extract::extract_squashfs;
-use genfstab::genfstab_to_file;
-use mount::mount_root_path;
+use genfstab::{genfstab_to_file, GenfstabError};
+use locale::SetHwclockError;
+use mount::{mount_root_path, MountInnerError};
 use num_enum::IntoPrimitive;
 use rustix::io::Errno;
 use serde::{Deserialize, Serialize};
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use swap::SwapFileError;
 use sysinfo::System;
-use thiserror::Error;
 use tracing::{debug, error, info};
+use user::{AddUserError, SetFullNameError};
+use utils::RunCmdError;
+use zoneinfo::SetZoneinfoError;
 
 use crate::{
     chroot::{dive_into_guest, escape_chroot, get_dir_fd},
@@ -60,18 +64,15 @@ mod zoneinfo;
 
 #[derive(Debug, Snafu)]
 pub enum MountError {
-    #[snafu(display("value is not set: {t}"))]
-    ValueNotSet { t: &'static str },
     #[snafu(display("Failed to create dir {}", path.display()))]
     CreateDir {
         source: std::io::Error,
         path: PathBuf,
     },
     #[snafu(display("Failed to mount {}", path.display()))]
-    MountRoot {
-        source: Errno,
-        path: PathBuf,
-    },
+    MountRoot { source: Errno, path: PathBuf },
+    #[snafu(display("value is not set: {t}"))]
+    ValueNotSetMount { t: &'static str },
 }
 
 #[derive(Debug, Snafu)]
@@ -84,48 +85,91 @@ pub enum SetupPartitionError {
     SwapFile { source: SwapFileError },
 }
 
+#[derive(Debug, Snafu)]
+pub enum InstallErr {
+    #[snafu(display("Value is not set: {v:?}"))]
+    ValueNotSet { v: NotSetValue },
+    #[snafu(display("Failed to get root dir fd"))]
+    GetDirFd { source: Errno },
+    #[snafu(display("Failed to setup partition"))]
+    SetupPartition { source: SetupPartitionError },
+    #[snafu(display("Failed to download squashfs"))]
+    DownloadSquashfs { source: download::DownloadError },
+    #[snafu(display("Failed to extract squashfs"))]
+    ExtractSquashfs { source: ExtractError },
+    #[snafu(display("Failed to generate fstab"))]
+    Genfstab { source: SetupGenfstabError },
+    #[snafu(display("Failed to chroot"))]
+    Chroot { source: ChrootError },
+    #[snafu(display("Failed to run dracut"))]
+    Dracut { source: RunCmdError },
+    #[snafu(display("Failed to install grub"))]
+    Grub { source: RunCmdError },
+    #[snafu(display("Failed to generate ssh key"))]
+    GenerateSshKey { source: RunCmdError },
+    #[snafu(display("Failed to configure system"))]
+    ConfigureSystem { source: ConfigureSystemError },
+    #[snafu(display("Failed to escape chroot"))]
+    EscapeChroot { source: ChrootError },
+    #[snafu(display("Failed to post installation"))]
+    PostInstallation { source: PostInstallationError },
+}
 
-#[derive(Debug, Error)]
-pub enum InstallError {
-    #[error("Failed to unpack: {0}")]
-    Unpack(std::io::Error),
-    #[error("Failed to run command {command}, err: {err}")]
-    RunCommand {
-        command: String,
-        err: std::io::Error,
+#[derive(Debug, Snafu)]
+pub enum PostInstallationError {
+    #[snafu(display("Failed to umount inner mount point"))]
+    UmountInner { source: MountInnerError },
+    #[snafu(display("Failed to umount root path: {}", path.display()))]
+    Umount { source: Errno, path: PathBuf },
+}
+
+#[derive(Debug, Snafu)]
+pub enum ConfigureSystemError {
+    #[snafu(display("Failed to append swap config to fstab"))]
+    SwapToGenfstab { source: GenfstabError },
+    #[snafu(display("Failed to set zoneinfo: {zone}"))]
+    SetZoneinfo {
+        source: SetZoneinfoError,
+        zone: String,
     },
-    #[error("Failed to mount filesystem device to {mount_point}, err: {err}")]
-    MountFs {
-        mount_point: String,
-        err: std::io::Error,
+    #[snafu(display("Failed to set hwclock: is_rtc: {is_rtc}"))]
+    SetHwclock {
+        source: SetHwclockError,
+        is_rtc: bool,
     },
-    #[error("Failed to umount filesystem device from {mount_point}, err: {err}")]
-    UmountFs {
-        mount_point: String,
-        err: std::io::Error,
+    #[snafu(display("Failed to set hostname: {hostname}"))]
+    SetHostname {
+        source: std::io::Error,
+        hostname: String,
     },
-    #[error("Failed to operate file or directory {path}, err: {err}")]
-    OperateFile { path: String, err: std::io::Error },
-    #[error("Full name is illegal: {0}")]
-    FullNameIllegal(String),
-    #[error("/etc/passwd is illegal")]
-    PasswdIllegal,
-    #[error("Failed to generate /etc/fstab: {0:?}")]
-    GenFstab(GenFstabErrorKind),
-    #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
-    #[error("Failed to download squashfs, checksum mismatch")]
-    ChecksumMisMatch,
-    #[error("Value {0:?} is not set")]
-    IsNotSet(NotSetValue),
-    #[error(transparent)]
-    Partition(#[from] PartitionError),
-    #[error("Partition value: {0:?} is none")]
-    PartitionValueIsNone(PartitionNotSetValue),
-    #[error("Local file {0:?} is not found")]
-    LocalFileNotFound(String),
-    #[error("Download path is not set")]
-    DownloadPathIsNotSet,
+    #[snafu(display("Failed to add new user"))]
+    AddNewUser { source: AddUserError },
+    #[snafu(display("Failed to set fullname: {fullname}"))]
+    SetFullName {
+        source: SetFullNameError,
+        fullname: String,
+    },
+    #[snafu(display("Failed to set locale: {locale}"))]
+    SetLocale {
+        source: std::io::Error,
+        locale: String,
+    },
+}
+
+#[derive(Debug, Snafu)]
+pub enum SetupGenfstabError {
+    #[snafu(transparent)]
+    Genfstab { source: GenfstabError },
+    #[snafu(display("value is not set: {t}"))]
+    ValueNotSetGenfstab { t: &'static str },
+}
+
+#[derive(Debug, Snafu)]
+#[snafu(display("Failed to extract squashfs {} to {}", from.display(), to.display()))]
+pub struct ExtractError {
+    source: std::io::Error,
+    from: PathBuf,
+    to: PathBuf,
 }
 
 #[derive(Debug)]
@@ -229,32 +273,33 @@ pub struct InstallConfig {
 }
 
 impl TryFrom<InstallConfigPrepare> for InstallConfig {
-    type Error = InstallError;
+    type Error = InstallErr;
 
     fn try_from(value: InstallConfigPrepare) -> Result<Self, Self::Error> {
         Ok(Self {
-            local: value
-                .locale
-                .ok_or(InstallError::IsNotSet(NotSetValue::Locale))?,
-            timezone: value
-                .timezone
-                .ok_or(InstallError::IsNotSet(NotSetValue::Timezone))?,
-            download: value
-                .download
-                .ok_or(InstallError::IsNotSet(NotSetValue::Download))?,
-            user: value
-                .user
-                .ok_or(InstallError::IsNotSet(NotSetValue::User))?,
+            local: value.locale.context(ValueNotSetSnafu {
+                v: NotSetValue::Locale,
+            })?,
+            timezone: value.timezone.context(ValueNotSetSnafu {
+                v: NotSetValue::Timezone,
+            })?,
+            download: value.download.context(ValueNotSetSnafu {
+                v: NotSetValue::Download,
+            })?,
+            user: value.user.context(ValueNotSetSnafu {
+                v: NotSetValue::User,
+            })?,
             rtc_as_localtime: value.rtc_as_localtime,
-            hostname: value
-                .hostname
-                .ok_or(InstallError::IsNotSet(NotSetValue::Hostname))?,
+            hostname: value.hostname.context(ValueNotSetSnafu {
+                v: NotSetValue::Hostname,
+            })?,
             swapfile: value.swapfile,
             target_partition: {
                 let lock = value.target_partition.lock().unwrap();
 
-                lock.clone()
-                    .ok_or(InstallError::IsNotSet(NotSetValue::TargetPartition))?
+                lock.clone().context(ValueNotSetSnafu {
+                    v: NotSetValue::TargetPartition,
+                })?
             },
             efi_partition: {
                 let lock = value.efi_partition.lock().unwrap();
@@ -344,7 +389,7 @@ impl InstallConfig {
         velocity: F3,
         tmp_mount_path: PathBuf,
         cancel_install: Arc<AtomicBool>,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, InstallErr>
     where
         F: Fn(u8),
         F2: Fn(f64) + Send + Sync + 'static,
@@ -352,7 +397,7 @@ impl InstallConfig {
     {
         let progress = Arc::new(progress);
         let velocity = Arc::new(velocity);
-        let root_fd = get_dir_fd(Path::new("/"))?;
+        let root_fd = get_dir_fd(Path::new("/")).context(GetDirFdSnafu)?;
 
         let mut stage = InstallationStage::default();
 
@@ -386,46 +431,52 @@ impl InstallConfig {
             }
 
             let res = match stage {
-                InstallationStage::SetupPartition => {
-                    self.setup_partition::<F2>(&progress, &tmp_mount_path, &cancel_install)
+                InstallationStage::SetupPartition => self
+                    .setup_partition::<F2>(&progress, &tmp_mount_path, &cancel_install)
+                    .context(SetupPartitionSnafu),
+                InstallationStage::DownloadSquashfs => self
+                    .download_squashfs::<F2, F3>(
+                        Arc::clone(&progress),
+                        Arc::clone(&velocity),
+                        Arc::clone(&cancel_install),
+                        (&mut squashfs_path, &mut squashfs_total_size),
+                    )
+                    .context(DownloadSquashfsSnafu),
+                InstallationStage::ExtractSquashfs => self
+                    .extract_squashfs(
+                        progress.as_ref(),
+                        velocity.as_ref(),
+                        &tmp_mount_path,
+                        &cancel_install,
+                        // 若能进行到这一步，则 squashfs_total_size 一定有值，故 unwrap 安全
+                        squashfs_total_size.unwrap(),
+                        squashfs_path.clone().unwrap(),
+                    )
+                    .context(ExtractSquashfsSnafu),
+                InstallationStage::GenerateFstab => self
+                    .generate_fstab(progress.as_ref(), &tmp_mount_path, &cancel_install)
+                    .context(GenfstabSnafu),
+                InstallationStage::Chroot => self
+                    .chroot(progress.as_ref(), &tmp_mount_path, &cancel_install)
+                    .context(ChrootSnafu),
+                InstallationStage::Dracut => {
+                    run_dracut(&cancel_install, &progress).context(DracutSnafu)
                 }
-                InstallationStage::DownloadSquashfs => self.download_squashfs::<F2, F3>(
-                    Arc::clone(&progress),
-                    Arc::clone(&velocity),
-                    Arc::clone(&cancel_install),
-                    (&mut squashfs_path, &mut squashfs_total_size),
-                ),
-                InstallationStage::ExtractSquashfs => self.extract_squashfs(
-                    progress.as_ref(),
-                    velocity.as_ref(),
-                    &tmp_mount_path,
-                    &cancel_install,
-                    // 若能进行到这一步，则 squashfs_total_size 一定有值，故 unwrap 安全
-                    squashfs_total_size.unwrap(),
-                    squashfs_path.clone().unwrap(),
-                ),
-                InstallationStage::GenerateFstab => {
-                    self.generate_fstab(progress.as_ref(), &tmp_mount_path, &cancel_install)
-                }
-                InstallationStage::Chroot => {
-                    self.chroot(progress.as_ref(), &tmp_mount_path, &cancel_install)
-                }
-                InstallationStage::Dracut => run_dracut(&cancel_install, &progress),
-                InstallationStage::InstallGrub => {
-                    self.install_grub(progress.as_ref(), &cancel_install)
-                }
-                InstallationStage::GenerateSshKey => {
-                    self.generate_ssh_key(progress.as_ref(), &cancel_install)
-                }
-                InstallationStage::ConfigureSystem => {
-                    self.configure_system(progress.as_ref(), &cancel_install)
-                }
-                InstallationStage::EscapeChroot => {
-                    self.escape_chroot(progress.as_ref(), &cancel_install, &root_fd)
-                }
-                InstallationStage::PostInstallation => {
-                    self.post_installation(progress.as_ref(), &tmp_mount_path)
-                }
+                InstallationStage::InstallGrub => self
+                    .install_grub(progress.as_ref(), &cancel_install)
+                    .context(GrubSnafu),
+                InstallationStage::GenerateSshKey => self
+                    .generate_ssh_key(progress.as_ref(), &cancel_install)
+                    .context(GenerateSshKeySnafu),
+                InstallationStage::ConfigureSystem => self
+                    .configure_system(progress.as_ref(), &cancel_install)
+                    .context(ConfigureSystemSnafu),
+                InstallationStage::EscapeChroot => self
+                    .escape_chroot(progress.as_ref(), &cancel_install, &root_fd)
+                    .context(EscapeChrootSnafu),
+                InstallationStage::PostInstallation => self
+                    .post_installation(progress.as_ref(), &tmp_mount_path)
+                    .context(PostInstallationSnafu),
                 InstallationStage::Done => break,
             };
 
@@ -456,7 +507,7 @@ impl InstallConfig {
         progress: &F,
         tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, ChrootError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -478,7 +529,7 @@ impl InstallConfig {
         progress: &F,
         tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, SetupGenfstabError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -520,11 +571,11 @@ impl InstallConfig {
                 let total_memory = sys.total_memory();
                 let size = get_recommend_swap_size(total_memory);
                 cancel_install_exit!(cancel_install);
-                create_swapfile(size, tmp_mount_path)?;
+                create_swapfile(size, tmp_mount_path).context(SwapFileSnafu)?;
             }
             SwapFile::Custom(size) => {
                 cancel_install_exit!(cancel_install);
-                create_swapfile(size as f64, tmp_mount_path)?;
+                create_swapfile(size as f64, tmp_mount_path).context(SwapFileSnafu)?;
             }
             SwapFile::Disable => {}
         }
@@ -540,7 +591,7 @@ impl InstallConfig {
         velocity: Arc<F2>,
         cancel_install: Arc<AtomicBool>,
         res: (&mut Option<PathBuf>, &mut Option<usize>),
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, DownloadError>
     where
         F1: Fn(f64) + Send + Sync + 'static,
         F2: Fn(usize) + Send + Sync + 'static,
@@ -566,7 +617,7 @@ impl InstallConfig {
         cancel_install: &Arc<AtomicBool>,
         total_size: usize,
         squashfs_path: PathBuf,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, ExtractError>
     where
         F1: Fn(f64) + Send + Sync + 'static,
         F2: Fn(usize) + Send + Sync + 'static,
@@ -577,12 +628,16 @@ impl InstallConfig {
 
         extract_squashfs(
             total_size as f64,
-            squashfs_path,
+            squashfs_path.clone(),
             tmp_mount_path.to_path_buf(),
             progress,
             velocity,
             cancel_install.clone(),
-        )?;
+        )
+        .context(ExtractSnafu {
+            from: squashfs_path,
+            to: tmp_mount_path.to_path_buf(),
+        })?;
 
         cancel_install_exit!(cancel_install);
 
@@ -595,7 +650,7 @@ impl InstallConfig {
         &self,
         progress: &F,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, RunCmdError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -615,7 +670,7 @@ impl InstallConfig {
         &self,
         progress: &F,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, RunCmdError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -636,7 +691,7 @@ impl InstallConfig {
         progress: &F,
         cancel_install: &Arc<AtomicBool>,
         root_fd: &OwnedFd,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, ChrootError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -656,7 +711,7 @@ impl InstallConfig {
         &self,
         progress: &F,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, ConfigureSystemError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -665,7 +720,7 @@ impl InstallConfig {
         cancel_install_exit!(cancel_install);
 
         if self.swapfile != SwapFile::Disable {
-            write_swap_entry_to_fstab()?;
+            write_swap_entry_to_fstab().context(SwapToGenfstabSnafu)?;
         }
 
         cancel_install_exit!(cancel_install);
@@ -675,29 +730,37 @@ impl InstallConfig {
         cancel_install_exit!(cancel_install);
 
         info!("Setting timezone as {} ...", self.timezone);
-        set_zoneinfo(&self.timezone)?;
+        set_zoneinfo(&self.timezone).context(SetZoneinfoSnafu {
+            zone: self.timezone.to_string(),
+        })?;
 
         cancel_install_exit!(cancel_install);
 
         info!("Setting rtc_as_localtime ...");
-        set_hwclock_tc(!self.rtc_as_localtime)?;
+        set_hwclock_tc(!self.rtc_as_localtime).context(SetHwclockSnafu {
+            is_rtc: self.rtc_as_localtime,
+        })?;
         progress(50.0);
 
         cancel_install_exit!(cancel_install);
 
         info!("Setting hostname as {}", self.hostname);
-        set_hostname(&self.hostname)?;
+        set_hostname(&self.hostname).context(SetHostnameSnafu {
+            hostname: self.hostname.to_string(),
+        })?;
         progress(75.0);
 
         cancel_install_exit!(cancel_install);
 
         info!("Setting User ...");
-        add_new_user(&self.user.username, &self.user.password)?;
+        add_new_user(&self.user.username, &self.user.password).context(AddNewUserSnafu)?;
 
         cancel_install_exit!(cancel_install);
 
         if let Some(full_name) = &self.user.full_name {
-            passwd_set_fullname(full_name, &self.user.username)?;
+            passwd_set_fullname(full_name, &self.user.username).context(SetFullNameSnafu {
+                fullname: full_name.to_string(),
+            })?;
         }
 
         cancel_install_exit!(cancel_install);
@@ -705,7 +768,9 @@ impl InstallConfig {
         progress(80.0);
 
         info!("Setting locale ...");
-        set_locale(&self.local)?;
+        set_locale(&self.local).context(SetLocaleSnafu {
+            locale: self.local.to_string(),
+        })?;
         progress(100.0);
 
         Ok(true)
@@ -715,7 +780,7 @@ impl InstallConfig {
         &self,
         progress: &F,
         tmp_mount_path: &Path,
-    ) -> Result<bool, InstallError>
+    ) -> Result<bool, PostInstallationError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -736,22 +801,25 @@ impl InstallConfig {
         }
 
         info!("Removing mounts ...");
-        remove_files_mounts(tmp_mount_path)?;
+        remove_files_mounts(tmp_mount_path).context(UmountInnerSnafu)?;
 
         info!("Unmounting filesystems...");
 
         if is_efi_booted() {
-            umount_root_path(&tmp_mount_path.join("efi"))?;
+            let path = tmp_mount_path.join("efi");
+            umount_root_path(&path).context(UmountSnafu { path })?;
         }
 
-        umount_root_path(tmp_mount_path)?;
+        umount_root_path(tmp_mount_path).context(UmountSnafu {
+            path: tmp_mount_path.to_path_buf(),
+        })?;
 
         progress(100.0);
 
         Ok(true)
     }
 
-    fn install_grub_impl(&self) -> Result<bool, InstallError> {
+    fn install_grub_impl(&self) -> Result<bool, RunCmdError> {
         if self.efi_partition.is_some() {
             info!("Installing grub to UEFI partition ...");
             execute_grub_install(None)?;
@@ -763,20 +831,20 @@ impl InstallConfig {
         Ok(true)
     }
 
-    fn genfatab(&self, tmp_mount_path: &Path) -> Result<bool, InstallError> {
+    fn genfatab(&self, tmp_mount_path: &Path) -> Result<bool, SetupGenfstabError> {
         genfstab_to_file(
             self.target_partition
                 .path
                 .as_ref()
-                .ok_or(InstallError::PartitionValueIsNone(
-                    PartitionNotSetValue::Path,
-                ))?,
+                .context(ValueNotSetGenfstabSnafu {
+                    t: "system partition path",
+                })?,
             self.target_partition
                 .fs_type
                 .as_ref()
-                .ok_or(InstallError::PartitionValueIsNone(
-                    PartitionNotSetValue::FsType,
-                ))?,
+                .context(ValueNotSetGenfstabSnafu {
+                    t: "system partition fstype",
+                })?,
             tmp_mount_path,
             Path::new("/"),
         )?;
@@ -786,15 +854,15 @@ impl InstallConfig {
                 efi_partition
                     .path
                     .as_ref()
-                    .ok_or(InstallError::PartitionValueIsNone(
-                        PartitionNotSetValue::Path,
-                    ))?,
+                    .context(ValueNotSetGenfstabSnafu {
+                        t: "efi partition path",
+                    })?,
                 efi_partition
                     .fs_type
                     .as_ref()
-                    .ok_or(InstallError::PartitionValueIsNone(
-                        PartitionNotSetValue::FsType,
-                    ))?,
+                    .context(ValueNotSetGenfstabSnafu {
+                        t: "efi partition fstype",
+                    })?,
                 tmp_mount_path,
                 Path::new("/efi"),
             )?;
@@ -808,7 +876,10 @@ impl InstallConfig {
         let fs_type = self
             .target_partition
             .fs_type
-            .context(ValueNotSetSnafu { t: "fstype" })?;
+            .as_ref()
+            .context(ValueNotSetMountSnafu {
+                t: "system partition fstype",
+            })?;
 
         mount_root_path(
             self.target_partition.path.as_deref(),
@@ -816,28 +887,33 @@ impl InstallConfig {
             &fs_type,
         )
         .context(MountRootSnafu {
-            path: self.target_partition.path.context(ValueNotSetSnafu {
-                t: "system mount path",
-            })?,
+            path: self
+                .target_partition
+                .path
+                .as_ref()
+                .context(ValueNotSetMountSnafu {
+                    t: "system mount path",
+                })?,
         })?;
 
         if let Some(ref efi) = self.efi_partition {
             let efi_mount_path = tmp_mount_path.join("efi");
             fs::create_dir_all(&efi_mount_path).context(CreateDirSnafu {
-                path: efi_mount_path,
+                path: efi_mount_path.to_path_buf(),
             })?;
 
             mount_root_path(
                 efi.path.as_deref(),
                 &efi_mount_path,
-                efi.fs_type
-                    .as_ref()
-                    .context(ValueNotSetSnafu { t: "fstype" })?,
+                efi.fs_type.as_ref().context(ValueNotSetMountSnafu {
+                    t: "efi partition fstype",
+                })?,
             )
             .context(MountRootSnafu {
-                path: efi.path.context(ValueNotSetSnafu {
-                    t: "efi mount path",
-                })?,
+                path: efi
+                    .path
+                    .as_ref()
+                    .context(ValueNotSetMountSnafu { t: "efi path" })?,
             })?;
         }
 
@@ -859,15 +935,17 @@ impl InstallConfig {
     }
 }
 
-fn run_dracut<F>(cancel_install: &Arc<AtomicBool>, progress: &Arc<F>) -> Result<bool, InstallError>
+fn run_dracut<F>(cancel_install: &Arc<AtomicBool>, progress: &Arc<F>) -> Result<bool, RunCmdError>
 where
     F: Fn(f64) + Send + Sync + 'static,
 {
     info!("Running dracut ...");
     cancel_install_exit!(cancel_install);
+
     progress(0.0);
     execute_dracut()?;
     progress(100.0);
+
     cancel_install_exit!(cancel_install);
     Ok(true)
 }

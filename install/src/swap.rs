@@ -91,7 +91,7 @@ pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), SwapFileE
         },
     )?;
 
-    run_command("mkswap", [&swap_path]).context(MkswapSnafu { path: swap_path })?;
+    run_command("mkswap", [&swap_path]).context(MkswapSnafu { path: swap_path.clone() })?;
     run_command("swapon", [swap_path]).ok();
 
     Ok(())

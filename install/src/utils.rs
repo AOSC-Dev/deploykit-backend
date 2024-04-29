@@ -27,7 +27,7 @@ where
     let cmd = Command::new(command)
         .args(args)
         .output()
-        .context(ExecSnafu { cmd: cmd_str })?;
+        .context(ExecSnafu { cmd: cmd_str.to_string() })?;
 
     if !cmd.status.success() {
         return Err(RunCmdError::RunFailed {
