@@ -3,10 +3,9 @@ use rustix::{
     io::Errno,
     mount::{self, MountFlags},
 };
-use std::{io, path::Path};
+use snafu::{ResultExt, Snafu};
+use std::path::Path;
 use tracing::debug;
-
-use crate::InstallError;
 
 const EFIVARS_PATH: &str = "sys/firmware/efi/efivars";
 
@@ -44,12 +43,8 @@ fn mount_inner<P: AsRef<Path>>(
 }
 
 /// Unmount the filesystem given at `root` and then do a sync
-pub fn umount_root_path(root: &Path) -> Result<(), InstallError> {
-    mount::unmount(root, mount::UnmountFlags::empty()).map_err(|e| InstallError::UmountFs {
-        mount_point: root.display().to_string(),
-        err: io::Error::new(e.kind(), e),
-    })?;
-
+pub fn umount_root_path(root: &Path) -> Result<(), Errno> {
+    mount::unmount(root, mount::UnmountFlags::empty())?;
     sync_disk();
 
     Ok(())
@@ -59,21 +54,37 @@ pub fn sync_disk() {
     rustix::fs::sync();
 }
 
+#[derive(Debug, Snafu)]
+#[snafu(display("failed to mount {point}"))]
+pub struct MountInnerError {
+    source: Errno,
+    point: &'static str,
+    umount: bool,
+}
+
 /// Setup all the necessary bind mounts
-pub fn setup_files_mounts(root: &Path) -> Result<(), Errno> {
+pub fn setup_files_mounts(root: &Path) -> Result<(), MountInnerError> {
     mount_inner(
         Some("proc"),
         &root.join("proc"),
         Some("proc"),
         MountFlags::NOSUID | MountFlags::NOEXEC | MountFlags::NODEV,
-    )?;
+    )
+    .context(MountInnerSnafu {
+        point: "proc",
+        umount: false,
+    })?;
 
     mount_inner(
         Some("sys"),
         &root.join("sys"),
         Some("sysfs"),
         MountFlags::NOSUID | MountFlags::NOEXEC | MountFlags::NODEV | MountFlags::RDONLY,
-    )?;
+    )
+    .context(MountInnerSnafu {
+        point: "sys",
+        umount: false,
+    })?;
 
     if is_efi_booted() {
         mount_inner(
@@ -81,7 +92,11 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), Errno> {
             &root.join(EFIVARS_PATH),
             Some("efivarfs"),
             MountFlags::NOSUID | MountFlags::NOEXEC | MountFlags::NODEV,
-        )?;
+        )
+        .context(MountInnerSnafu {
+            point: "efivarfs",
+            umount: false,
+        })?;
     }
 
     mount_inner(
@@ -89,35 +104,51 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), Errno> {
         &root.join("dev"),
         Some("devtmpfs"),
         MountFlags::NOSUID,
-    )?;
+    )
+    .context(MountInnerSnafu {
+        point: "udev",
+        umount: false,
+    })?;
 
     mount_inner(
         Some("devpts"),
         &root.join("dev").join("pts"),
         Some("devpts"),
         MountFlags::NOSUID | MountFlags::NOEXEC,
-    )?;
+    )
+    .context(MountInnerSnafu {
+        point: "devpts",
+        umount: false,
+    })?;
 
     mount_inner(
         Some("shm"),
         &root.join("dev").join("shm"),
         Some("devpts"),
         MountFlags::NOSUID | MountFlags::NODEV,
-    )?;
+    )
+    .context(MountInnerSnafu {
+        point: "shm",
+        umount: false,
+    })?;
 
     mount_inner(
         Some("run"),
         &root.join("run"),
         Some("devpts"),
         MountFlags::NOSUID | MountFlags::NODEV,
-    )?;
+    )
+    .context(MountInnerSnafu {
+        point: "run",
+        umount: false,
+    })?;
 
     Ok(())
 }
 
 /// Remove bind mounts
 /// Note: This function should be called outside of the chroot context
-pub fn remove_files_mounts(system_path: &Path) -> Result<(), InstallError> {
+pub fn remove_files_mounts(system_path: &Path) -> Result<(), MountInnerError> {
     let mut mounts = [
         "proc",
         "sys",
@@ -140,14 +171,15 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), InstallError> {
 
         debug!("umounting point {}", mount_point.display());
 
-        let res = mount::unmount(&mount_point, mount::UnmountFlags::empty()).map_err(|e| {
-            InstallError::UmountFs {
-                mount_point: i.to_string(),
-                err: io::Error::new(e.kind(), "Failed to umount fs"),
-            }
-        });
+        let res =
+            mount::unmount(&mount_point, mount::UnmountFlags::empty()).context(MountInnerSnafu {
+                point: i,
+                umount: true,
+            });
 
         debug!("{} umount result: {:?}", mount_point.display(), res);
+
+        res?;
     }
 
     Ok(())
