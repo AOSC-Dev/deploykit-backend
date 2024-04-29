@@ -21,6 +21,7 @@ use extract::extract_squashfs;
 use genfstab::genfstab_to_file;
 use mount::mount_root_path;
 use num_enum::IntoPrimitive;
+use rustix::io::Errno;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use swap::SwapFileError;
@@ -68,7 +69,7 @@ pub enum MountError {
     },
     #[snafu(display("Failed to mount {}", path.display()))]
     MountRoot {
-        source: std::io::Error,
+        source: Errno,
         path: PathBuf,
     },
 }

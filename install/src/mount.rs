@@ -15,7 +15,7 @@ pub(crate) fn mount_root_path(
     partition: Option<&Path>,
     target: &Path,
     fs_type: &str,
-) -> Result<(), io::Error> {
+) -> Result<(), Errno> {
     let mut fs_type = fs_type;
     if fs_type.starts_with("fat") {
         fs_type = "vfat";
@@ -31,7 +31,7 @@ fn mount_inner<P: AsRef<Path>>(
     target: &Path,
     fs_type: Option<&str>,
     flag: MountFlags,
-) -> Result<(), io::Error> {
+) -> Result<(), Errno> {
     let partition = partition.as_ref().map(|p| p.as_ref());
 
     mount::mount(
@@ -41,7 +41,6 @@ fn mount_inner<P: AsRef<Path>>(
         flag,
         "",
     )
-    .map_err(|e| io::Error::new(e.kind(), e))
 }
 
 /// Unmount the filesystem given at `root` and then do a sync
