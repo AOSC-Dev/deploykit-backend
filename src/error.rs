@@ -15,56 +15,18 @@ use install::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use thiserror::Error;
-
-#[derive(Debug, Error, Serialize, Deserialize)]
-pub enum DeploykitError {
-    #[error("Failed to get field {field}: {error}")]
-    GetField {
-        field: String,
-        error: GetFieldErrKind,
-    },
-    #[error("Failed to set field: {0}, value: {1} is illegal")]
-    SetValue(String, String),
-    #[error("Failed to auto create partitions: {0}")]
-    AutoPartition(String),
-    #[error("Failed to install system: {0}")]
-    Install(String),
-    #[error("Failed to find esp partition: {0}")]
-    FindEspPartition(String),
-    #[error("Unsupport disk combo")]
-    UnsupportedDiskCombo(String),
-    #[error("Failed to esacape environment: {0}")]
-    EscapeEnvironment(String),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum GetFieldErrKind {
-    UnknownField,
-}
-
-impl Display for GetFieldErrKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            GetFieldErrKind::UnknownField => write!(f, "Unknown field"),
-        }
-    }
-}
-
-impl DeploykitError {
-    pub fn unknown_field(field: &str) -> Self {
-        Self::GetField {
-            field: field.to_string(),
-            error: GetFieldErrKind::UnknownField,
-        }
-    }
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DkError {
-    message: String,
-    t: String,
-    data: Value,
+    pub message: String,
+    pub t: String,
+    pub data: Value,
+}
+
+impl Display for DkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
 }
 
 impl From<&CombineError> for DkError {

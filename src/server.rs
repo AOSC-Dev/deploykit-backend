@@ -24,12 +24,12 @@ use install::{
     DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sysinfo::System;
 use tracing::{error, info, warn};
 use zbus::interface;
 
-use crate::error::{DeploykitError, DkError};
+use crate::error::DkError;
 
 #[derive(Debug)]
 pub struct DeploykitServer {
@@ -310,7 +310,12 @@ impl DeploykitServer {
         match &*ps {
             AutoPartitionProgress::Finish { res } => match res {
                 Ok(_) => Message::ok(&*ps),
-                Err(e) => Message::err(DeploykitError::AutoPartition(e.to_string())),
+                Err(e) => Message::err(DkError {
+                    message: e.to_string(),
+                    t: "AutoPartition".to_string(),
+                    // TODO
+                    data: json!({}),
+                }),
             },
             _ => Message::ok(&*ps),
         }
@@ -386,7 +391,12 @@ impl DeploykitServer {
 
         match res {
             Ok(p) => Message::ok(&p),
-            Err(e) => Message::err(DeploykitError::FindEspPartition(e.to_string())),
+            Err(e) => Message::err(DkError {
+                message: e.to_string(),
+                t: "FindESPPartition".to_string(),
+                // TODO
+                data: json!({}),
+            }),
         }
     }
 
@@ -396,7 +406,15 @@ impl DeploykitServer {
 
         match res {
             Ok(()) => Message::ok(&""),
-            Err(e) => Message::err(DeploykitError::UnsupportedDiskCombo(e.to_string())),
+            Err(e) => Message::err(DkError {
+                message: e.to_string(),
+                t: "CombineError".to_string(),
+                data: serde_json::to_value(DkError::from(&e)).unwrap_or_else(|e| {
+                    json!({
+                        "message": format!("Failed to ser error message: {e}"),
+                    })
+                }),
+            }),
         }
     }
 
@@ -419,7 +437,7 @@ fn set_config_inner(
     config: &mut InstallConfigPrepare,
     field: &str,
     value: &str,
-) -> Result<(), DeploykitError> {
+) -> Result<(), DkError> {
     match field {
         "locale" => {
             config.locale = Some(value.to_string());
@@ -430,16 +448,33 @@ fn set_config_inner(
             Ok(())
         }
         "download" => {
-            let download_type = serde_json::from_str::<DownloadType>(value)
-                .map_err(|_| DeploykitError::SetValue("download".to_string(), value.to_string()))?;
+            let download_type =
+                serde_json::from_str::<DownloadType>(value).map_err(|e| DkError {
+                    message: e.to_string(),
+                    t: "SetValue".to_string(),
+                    data: {
+                        json!({
+                            "field": "download".to_string(),
+                            "value": value.to_string(),
+                        })
+                    },
+                })?;
 
             config.download = Some(download_type);
 
             Ok(())
         }
         "user" => {
-            let user = serde_json::from_str::<User>(value)
-                .map_err(|_| DeploykitError::SetValue("user".to_string(), value.to_string()))?;
+            let user = serde_json::from_str::<User>(value).map_err(|e| DkError {
+                message: e.to_string(),
+                t: "SetValue".to_string(),
+                data: {
+                    json!({
+                        "field": "user".to_string(),
+                        "value": value.to_string(),
+                    })
+                },
+            })?;
 
             config.user = Some(user);
             Ok(())
@@ -457,23 +492,45 @@ fn set_config_inner(
                 config.rtc_as_localtime = true;
                 Ok(())
             }
-            _ => Err(DeploykitError::SetValue(
-                field.to_string(),
-                value.to_string(),
-            )),
+            _ => Err(DkError {
+                message: "rtc_as_localtime must be 0 or 1".to_string(),
+                t: "SetValue".to_string(),
+                data: {
+                    json!({
+                        "field": "rtc_as_localtime".to_string(),
+                        "value": value.to_string(),
+                    })
+                },
+            }),
         },
         "target_partition" => {
             #[cfg(not(debug_assertions))]
             {
-                let p = serde_json::from_str::<DkPartition>(value)
-                    .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+                let p = serde_json::from_str::<DkPartition>(value).map_err(|e| DkError {
+                    message: e.to_string(),
+                    t: "SetValue".to_string(),
+                    data: {
+                        json!({
+                            "field": "target_partition".to_string(),
+                            "value": value.to_string(),
+                        })
+                    },
+                })?;
                 config.target_partition = Arc::new(Mutex::new(Some(p)));
                 Ok(())
             }
             #[cfg(debug_assertions)]
             {
-                let _p = serde_json::from_str::<DkPartition>(value)
-                    .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+                let _p = serde_json::from_str::<DkPartition>(value).map_err(|e| DkError {
+                    message: e.to_string(),
+                    t: "SetValue".to_string(),
+                    data: {
+                        json!({
+                            "field": "target_partition".to_string(),
+                            "value": value.to_string(),
+                        })
+                    },
+                })?;
                 config.target_partition = Arc::new(Mutex::new(Some(DkPartition {
                     path: Some(PathBuf::from("/dev/loop30p1")),
                     parent_path: Some(PathBuf::from("/dev/loop30")),
@@ -486,15 +543,31 @@ fn set_config_inner(
         "efi_partition" => {
             #[cfg(not(debug_assertions))]
             {
-                let p = serde_json::from_str::<DkPartition>(value)
-                    .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+                let p = serde_json::from_str::<DkPartition>(value).map_err(|e| DkError {
+                    message: e.to_string(),
+                    t: "SetValue".to_string(),
+                    data: {
+                        json!({
+                            "field": "efi_partition".to_string(),
+                            "value": value.to_string(),
+                        })
+                    },
+                })?;
                 config.efi_partition = Arc::new(Mutex::new(Some(p)));
             }
 
             #[cfg(debug_assertions)]
             {
-                let _p = serde_json::from_str::<DkPartition>(value)
-                    .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+                let _p = serde_json::from_str::<DkPartition>(value).map_err(|e| DkError {
+                    message: e.to_string(),
+                    t: "SetValue".to_string(),
+                    data: {
+                        json!({
+                            "field": "efi_partition".to_string(),
+                            "value": value.to_string(),
+                        })
+                    },
+                })?;
                 config.efi_partition = Arc::new(Mutex::new(Some(DkPartition {
                     path: Some(PathBuf::from("/dev/loop30p2")),
                     parent_path: Some(PathBuf::from("/dev/loop30")),
@@ -506,13 +579,30 @@ fn set_config_inner(
             Ok(())
         }
         "swapfile" => {
-            config.swapfile = serde_json::from_str::<SwapFile>(value)
-                .map_err(|_| DeploykitError::SetValue(field.to_string(), value.to_string()))?;
+            config.swapfile = serde_json::from_str::<SwapFile>(value).map_err(|e| DkError {
+                message: e.to_string(),
+                t: "SetValue".to_string(),
+                data: {
+                    json!({
+                        "field": "swapfile".to_string(),
+                        "value": value.to_string(),
+                    })
+                },
+            })?;
             Ok(())
         }
         _ => {
             error!("Unknown field: {field}");
-            Err(DeploykitError::unknown_field(field))
+            Err(DkError {
+                message: "Unknown field".to_string(),
+                t: "SetValue".to_string(),
+                data: {
+                    json!({
+                        "field": field.to_string(),
+                        "value": value.to_string(),
+                    })
+                },
+            })
         }
     }
 }
