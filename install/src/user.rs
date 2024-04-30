@@ -34,7 +34,7 @@ pub enum AddUserError {
 
 /// Sets Fullname
 /// Must be used in a chroot context
-pub fn passwd_set_fullname(full_name: &str, username: &str) -> Result<(), SetFullNameError> {
+pub(crate) fn passwd_set_fullname(full_name: &str, username: &str) -> Result<(), SetFullNameError> {
     let mut f = std::fs::OpenOptions::new()
         .write(true)
         .read(true)
@@ -95,7 +95,7 @@ fn set_full_name(
 
 /// Adds a new normal user to the guest environment
 /// Must be used in a chroot context
-pub fn add_new_user(name: &str, password: &str) -> Result<(), AddUserError> {
+pub(crate) fn add_new_user(name: &str, password: &str) -> Result<(), AddUserError> {
     run_command("useradd", ["-m", "-s", "/bin/bash", name])?;
     run_command("usermod", ["-aG", "audio,cdrom,video,wheel,plugdev", name])?;
 
@@ -104,7 +104,7 @@ pub fn add_new_user(name: &str, password: &str) -> Result<(), AddUserError> {
     Ok(())
 }
 
-pub fn chpasswd(name: &str, password: &str) -> Result<(), AddUserError> {
+pub(crate) fn chpasswd(name: &str, password: &str) -> Result<(), AddUserError> {
     info!("Running chpasswd ...");
     let command = Command::new("chpasswd")
         .stdin(Stdio::piped())

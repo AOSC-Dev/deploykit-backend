@@ -21,7 +21,7 @@ use install::{
     chroot::{escape_chroot, get_dir_fd},
     mount::{remove_files_mounts, sync_disk, umount_root_path},
     swap::{get_recommend_swap_size, swapoff},
-    DownloadType, InstallConfig, InstallConfigPrepare, SwapFile, User,
+    DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -29,7 +29,7 @@ use sysinfo::System;
 use tracing::{error, info, warn};
 use zbus::interface;
 
-use crate::error::DeploykitError;
+use crate::error::{DeploykitError, DkError};
 
 #[derive(Debug)]
 pub struct DeploykitServer {
@@ -86,7 +86,7 @@ impl Default for DeploykitServer {
 pub enum ProgressStatus {
     Pending,
     Working { step: u8, progress: f64, v: usize },
-    Error(DeploykitError),
+    Error(DkError),
     Finish,
 }
 
@@ -524,14 +524,14 @@ fn start_install_inner(
     v_tx: Sender<usize>,
     ps: Arc<Mutex<ProgressStatus>>,
     cancel_install: Arc<AtomicBool>,
-) -> Result<JoinHandle<()>, DeploykitError> {
-    let mut config =
-        InstallConfig::try_from(config).map_err(|e| DeploykitError::Install(e.to_string()))?;
+) -> Result<JoinHandle<()>, DkError> {
+    let mut config = InstallConfig::try_from(config).map_err(|e| DkError::from(&e))?;
 
     info!("Starting install");
 
     let temp_dir = tempfile::tempdir()
-        .map_err(|e| DeploykitError::Install(e.to_string()))?
+        .map_err(|e| InstallErr::CreateTempDir { source: e })
+        .map_err(|e| DkError::from(&e))?
         .into_path()
         .to_path_buf();
 
@@ -543,10 +543,14 @@ fn start_install_inner(
         *to_path = Some(tmp_dir_clone.join("squashfs"));
     }
 
-    let root_fd = get_dir_fd(Path::new("/")).map_err(|e| DeploykitError::Install(e.to_string()))?;
+    let root_fd = get_dir_fd(Path::new("/"))
+        .map_err(|e| InstallErr::GetDirFd { source: e })
+        .map_err(|e| DkError::from(&e))?;
+
     let root_fd_clone = root_fd
         .try_clone()
-        .map_err(|e| DeploykitError::Install(e.to_string()))?;
+        .map_err(|e| InstallErr::CloneFd { source: e })
+        .map_err(|e| DkError::from(&e))?;
 
     ctrlc::set_handler(move || {
         if let Ok(root_fd) = root_fd_clone.try_clone() {
@@ -578,7 +582,7 @@ fn start_install_inner(
                     temp_dir,
                     cancel_install_clone,
                 )
-                .map_err(|e| DeploykitError::Install(e.to_string()));
+                .map_err(|e| DkError::from(&e));
 
             if let Err(e) = res {
                 {

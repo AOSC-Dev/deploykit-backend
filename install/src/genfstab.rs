@@ -20,7 +20,7 @@ pub enum GenfstabError {
 }
 
 /// Gen fstab to /etc/fstab
-pub fn genfstab_to_file(
+pub(crate) fn genfstab_to_file(
     partition_path: &Path,
     fs_type: &str,
     root_path: &Path,
@@ -42,7 +42,7 @@ pub fn genfstab_to_file(
 }
 
 /// Must be used in a chroot context
-pub fn write_swap_entry_to_fstab() -> Result<(), GenfstabError> {
+pub(crate) fn write_swap_entry_to_fstab() -> Result<(), GenfstabError> {
     let s = "/swapfile none swap defaults,nofail 0 0\n";
     let mut fstab = std::fs::OpenOptions::new()
         .append(true)

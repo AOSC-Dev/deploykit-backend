@@ -47,7 +47,7 @@ pub enum DownloadError {
     },
 }
 
-pub fn download_file<F, F2>(
+pub(crate) fn download_file<F, F2>(
     download_type: &DownloadType,
     progress: Arc<F>,
     velocity: Arc<F2>,

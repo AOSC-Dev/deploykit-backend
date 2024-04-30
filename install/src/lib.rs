@@ -48,19 +48,19 @@ use crate::{
 };
 
 pub mod chroot;
-mod download;
+pub mod download;
 mod dracut;
 mod extract;
-mod genfstab;
+pub mod genfstab;
 mod grub;
 mod hostname;
-mod locale;
+pub mod locale;
 pub mod mount;
 mod ssh;
 pub mod swap;
-mod user;
-mod utils;
-mod zoneinfo;
+pub mod user;
+pub mod utils;
+pub mod zoneinfo;
 
 #[derive(Debug, Snafu)]
 pub enum MountError {
@@ -87,6 +87,10 @@ pub enum SetupPartitionError {
 
 #[derive(Debug, Snafu)]
 pub enum InstallErr {
+    #[snafu(display("Failed to clone fd"))]
+    CloneFd { source: std::io::Error },
+    #[snafu(display("Failed to create tempdir"))]
+    CreateTempDir { source: std::io::Error },
     #[snafu(display("Value is not set: {v:?}"))]
     ValueNotSet { v: NotSetValue },
     #[snafu(display("Failed to get root dir fd"))]
@@ -168,8 +172,8 @@ pub enum SetupGenfstabError {
 #[snafu(display("Failed to extract squashfs {} to {}", from.display(), to.display()))]
 pub struct ExtractError {
     source: std::io::Error,
-    from: PathBuf,
-    to: PathBuf,
+    pub from: PathBuf,
+    pub to: PathBuf,
 }
 
 #[derive(Debug)]
@@ -187,6 +191,20 @@ pub enum NotSetValue {
     User,
     Hostname,
     TargetPartition,
+}
+
+impl Display for NotSetValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NotSetValue::Locale => write!(f, "locale"),
+            NotSetValue::Timezone => write!(f, "timezone"),
+            NotSetValue::Flaver => write!(f, "flaver"),
+            NotSetValue::Download => write!(f, "download"),
+            NotSetValue::User => write!(f, "user"),
+            NotSetValue::Hostname => write!(f, "hostname"),
+            NotSetValue::TargetPartition => write!(f, "target partition"),
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -78,7 +78,7 @@ pub(crate) fn get_arch_name() -> Option<&'static str> {
     }
 }
 
-pub fn no_need_to_run_info(s: &str, str_is_retro: bool) {
+pub(crate) fn no_need_to_run_info(s: &str, str_is_retro: bool) {
     if str_is_retro {
         info!("Retro system no need to run {}", s);
     } else {

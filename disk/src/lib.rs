@@ -7,6 +7,7 @@ use std::{
 
 use gptman::linux::BlockError;
 use serde::Serialize;
+use serde_json::json;
 use snafu::Snafu;
 use thiserror::Error;
 
@@ -180,7 +181,7 @@ pub fn right_combine(device_path: &Path) -> Result<(), CombineError> {
         _ => Ok(()),
     }
 }
- 
+
 #[cfg(target_arch = "powerpc64")]
 pub fn right_combine(device_path: &Path) -> Result<(), CombineError> {
     Ok(())

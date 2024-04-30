@@ -58,8 +58,8 @@ pub fn sync_disk() {
 #[snafu(display("failed to mount {point}"))]
 pub struct MountInnerError {
     source: Errno,
-    point: &'static str,
-    umount: bool,
+    pub point: &'static str,
+    pub umount: bool,
 }
 
 /// Setup all the necessary bind mounts
