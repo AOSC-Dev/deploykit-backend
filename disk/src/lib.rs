@@ -7,7 +7,6 @@ use std::{
 
 use gptman::linux::BlockError;
 use serde::Serialize;
-use serde_json::json;
 use snafu::Snafu;
 use thiserror::Error;
 
