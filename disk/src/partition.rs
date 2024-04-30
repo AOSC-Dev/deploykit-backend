@@ -11,6 +11,7 @@ use libparted::{Device, Disk, IsZero};
 use mbrman::MBR;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use snafu::Snafu;
 use tracing::info;
 use uuid::{uuid, Uuid};
 
@@ -28,6 +29,20 @@ const SUPPORT_PARTITION_TYPE: &[&str] = &["primary", "logical"];
 const EFI: Uuid = uuid!("C12A7328-F81F-11D2-BA4B-00A0C93EC93B");
 const LINUX_FS: Uuid = uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4");
 
+#[derive(Debug, Snafu)]
+pub enum PartitionErr {
+    #[snafu(display("Failed to open device: {}", path.display()))]
+    OpenDevice {
+        source: std::io::Error,
+        path: PathBuf,
+    },
+    #[snafu(display("Failed to probe disk: {}", path.display()))]
+    ProbeDisk {
+        source: std::io::Error,
+        path: PathBuf,
+    },
+}
+
 pub fn cvt<T: IsZero>(t: T) -> io::Result<T> {
     if t.is_zero() {
         Err(io::Error::last_os_error())
@@ -36,28 +51,12 @@ pub fn cvt<T: IsZero>(t: T) -> io::Result<T> {
     }
 }
 
-pub fn get_partition_table_type(device_path: &Path) -> Result<String, PartitionError> {
-    let device = Device::new(device_path).map_err(|e| PartitionError::OpenDevice {
-        path: device_path.display().to_string(),
-        err: e,
-    })?;
-
-    let partition_t =
-        cvt(unsafe { libparted_sys::ped_disk_probe(device.ped_device()) }).map_err(|e| {
-            PartitionError::GetPartitionType {
-                path: device_path.display().to_string(),
-                err: e,
-            }
-        })?;
-
-    let partition_t_name =
-        unsafe { cvt((*partition_t).name) }.map_err(|e| PartitionError::GetPartitionType {
-            path: device_path.display().to_string(),
-            err: e,
-        })?;
-
+pub fn get_partition_table_type(device_path: &Path) -> Result<String, io::Error> {
+    let device = Device::new(device_path)?;
+    let partition_t = cvt(unsafe { libparted_sys::ped_disk_probe(device.ped_device()) })?;
+    let partition_t_name = unsafe { cvt((*partition_t).name) }?;
     let partition_t = unsafe { CStr::from_ptr(partition_t_name) };
-    let partition_t = partition_t.to_str()?.to_string();
+    let partition_t = partition_t.to_string_lossy().to_string();
 
     Ok(partition_t)
 }
