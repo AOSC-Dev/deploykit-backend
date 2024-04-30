@@ -406,7 +406,15 @@ impl DeploykitServer {
 
         match res {
             Ok(()) => Message::ok(&""),
-            Err(e) => Message::err(DkError::from(&e)),
+            Err(e) => Message::err(DkError {
+                message: e.to_string(),
+                t: "CombineError".to_string(),
+                data: serde_json::to_value(DkError::from(&e)).unwrap_or_else(|e| {
+                    json!({
+                        "message": format!("Failed to ser error message: {e}"),
+                    })
+                }),
+            }),
         }
     }
 
