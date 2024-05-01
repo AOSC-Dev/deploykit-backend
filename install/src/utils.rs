@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::{ffi::OsStr, process::Command};
 
-use snafu::{ResultExt, Snafu};
+use snafu::{ensure, ResultExt, Snafu};
 use tracing::info;
 
 #[derive(Debug, Snafu)]
@@ -29,13 +29,11 @@ where
         .output()
         .context(ExecSnafu { cmd: cmd_str.to_string() })?;
 
-    if !cmd.status.success() {
-        return Err(RunCmdError::RunFailed {
-            cmd: cmd_str,
-            stdout: String::from_utf8_lossy(&cmd.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&cmd.stderr).to_string(),
-        });
-    }
+    ensure!(cmd.status.success(), RunFailedSnafu {
+        cmd: cmd_str,
+        stdout: String::from_utf8_lossy(&cmd.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&cmd.stderr).to_string(),
+    });
 
     info!("Run {} Successfully!", cmd_str);
 
