@@ -5,6 +5,7 @@ use install::{
     chroot::ChrootError,
     download::DownloadError,
     genfstab::GenfstabError,
+    grub::RunGrubError,
     locale::SetHwclockError,
     swap::SwapFileError,
     user::{AddUserError, SetFullNameError},
@@ -67,6 +68,33 @@ impl From<&CombineError> for DkError {
                     })
                 },
             },
+        }
+    }
+}
+
+#[cfg(not(target_arch = "powerpc64"))]
+impl From<&RunGrubError> for DkError {
+    fn from(value: &RunGrubError) -> Self {
+        let RunGrubError::RunCommand { source } = value;
+        DkError::from(source)
+    }
+}
+
+#[cfg(target_arch = "powerpc64")]
+impl From<&RunGrubError> for DkError {
+    fn from(value: &RunGrubError) -> Self {
+        match value {
+            RunGrubError::OpenCpuInfo { source } => Self {
+                message: value.to_string(),
+                t: "OpenCpuInfo".to_string(),
+                data: {
+                    json!({
+                        "message": source.to_string(),
+                        "kind": source.kind().to_string(),
+                    })
+                },
+            },
+            RunGrubError::RunCommand { source } => DkError::from(source),
         }
     }
 }
@@ -165,13 +193,11 @@ impl From<&InstallErr> for DkError {
             InstallErr::Grub { source } => Self {
                 message: value.to_string(),
                 t: "Grub".to_string(),
-                data: {
+                data: serde_json::to_value(DkError::from(source)).unwrap_or_else(|e| {
                     json!({
-                        "stage": 7,
-                        "message": source.to_string(),
-                        "data": DkError::from(source)
+                        "message": format!("Failed to ser error message: {e}"),
                     })
-                },
+                }),
             },
             InstallErr::GenerateSshKey { source } => Self {
                 message: value.to_string(),

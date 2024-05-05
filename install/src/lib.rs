@@ -20,6 +20,7 @@ use disk::{
 use download::{download_file, DownloadError};
 use extract::extract_squashfs;
 use genfstab::{genfstab_to_file, GenfstabError};
+use grub::RunGrubError;
 use locale::SetHwclockError;
 use mount::{mount_root_path, MountInnerError};
 use num_enum::IntoPrimitive;
@@ -52,7 +53,7 @@ pub mod download;
 mod dracut;
 mod extract;
 pub mod genfstab;
-mod grub;
+pub mod grub;
 mod hostname;
 pub mod locale;
 pub mod mount;
@@ -108,7 +109,7 @@ pub enum InstallErr {
     #[snafu(display("Failed to run dracut"))]
     Dracut { source: RunCmdError },
     #[snafu(display("Failed to install grub"))]
-    Grub { source: RunCmdError },
+    Grub { source: RunGrubError },
     #[snafu(display("Failed to generate ssh key"))]
     GenerateSshKey { source: RunCmdError },
     #[snafu(display("Failed to configure system"))]
@@ -668,7 +669,7 @@ impl InstallConfig {
         &self,
         progress: &F,
         cancel_install: &Arc<AtomicBool>,
-    ) -> Result<bool, RunCmdError>
+    ) -> Result<bool, RunGrubError>
     where
         F: Fn(f64) + Send + Sync + 'static,
     {
@@ -837,7 +838,7 @@ impl InstallConfig {
         Ok(true)
     }
 
-    fn install_grub_impl(&self) -> Result<bool, RunCmdError> {
+    fn install_grub_impl(&self) -> Result<bool, RunGrubError> {
         if self.efi_partition.is_some() {
             info!("Installing grub to UEFI partition ...");
             execute_grub_install(None)?;
