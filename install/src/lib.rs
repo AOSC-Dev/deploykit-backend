@@ -428,26 +428,23 @@ impl InstallConfig {
         loop {
             debug!("Current stage: {stage}");
 
-            // Done 只是为了编码方便，并不是真正的阶段
-            if !matches!(stage, InstallationStage::Done) {
-                // GUI 用户体验需求，一些步骤不应该执行 step 回掉
-                let num = match stage {
-                    InstallationStage::SetupPartition => 1,
-                    InstallationStage::DownloadSquashfs => 2,
-                    InstallationStage::ExtractSquashfs => 3,
-                    InstallationStage::GenerateFstab => 4,
-                    InstallationStage::Chroot => 4,
-                    InstallationStage::Dracut => 5,
-                    InstallationStage::InstallGrub => 6,
-                    InstallationStage::GenerateSshKey => 7,
-                    InstallationStage::ConfigureSystem => 8,
-                    InstallationStage::EscapeChroot => 8,
-                    InstallationStage::PostInstallation => 8,
-                    InstallationStage::Done => 8,
-                };
+            // GUI 用户体验需求，一些步骤不应该执行 step 回掉
+            let num = match stage {
+                InstallationStage::SetupPartition => 1,
+                InstallationStage::DownloadSquashfs => 2,
+                InstallationStage::ExtractSquashfs => 3,
+                InstallationStage::GenerateFstab => 4,
+                InstallationStage::Chroot => 4,
+                InstallationStage::Dracut => 5,
+                InstallationStage::InstallGrub => 6,
+                InstallationStage::GenerateSshKey => 7,
+                InstallationStage::ConfigureSystem => 8,
+                InstallationStage::EscapeChroot => 8,
+                InstallationStage::PostInstallation => 8,
+                InstallationStage::Done => 8,
+            };
 
-                step(num);
-            }
+            step(num);
 
             let res = match stage {
                 InstallationStage::SetupPartition => self
