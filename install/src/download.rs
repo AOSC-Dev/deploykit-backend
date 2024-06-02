@@ -10,6 +10,7 @@ use sha2::Digest;
 use sha2::Sha256;
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use tokio::io::AsyncWriteExt;
+use tracing::debug;
 
 use crate::DownloadType;
 
@@ -192,7 +193,11 @@ where
 
     tokio::task::spawn_blocking(move || {
         let download_hash = v.finalize().to_vec();
-        ensure!(hex::encode(download_hash) == hash, ChecksumMismatchSnafu);
+        let checksum = hex::encode(download_hash);
+        debug!("Right hash: {hash}");
+        debug!("Now checksum: {checksum}");
+        ensure!(checksum == hash, ChecksumMismatchSnafu);
+        debug!("Checksum is ok");
 
         Ok(())
     })
