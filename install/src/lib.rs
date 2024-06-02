@@ -350,7 +350,10 @@ enum InstallationStage {
     GenerateSshKey,
     ConfigureSystem,
     EscapeChroot,
-    PostInstallation,
+    SwapOff,
+    UmountInnerPath,
+    UmountEFIPath,
+    UmountRootPath,
     Done,
 }
 
@@ -373,7 +376,10 @@ impl Display for InstallationStage {
             Self::GenerateSshKey => "generate ssh key",
             Self::ConfigureSystem => "configure system",
             Self::EscapeChroot => "escape chroot",
-            Self::PostInstallation => "post installation",
+            Self::SwapOff => "swap off",
+            Self::UmountInnerPath => "umount inner path",
+            Self::UmountEFIPath => "umount EFI path",
+            Self::UmountRootPath => "umount root path",
             Self::Done => "done",
         };
 
@@ -393,8 +399,11 @@ impl InstallationStage {
             Self::InstallGrub => Self::GenerateSshKey,
             Self::GenerateSshKey => Self::ConfigureSystem,
             Self::ConfigureSystem => Self::EscapeChroot,
-            Self::EscapeChroot => Self::PostInstallation,
-            Self::PostInstallation => Self::Done,
+            Self::EscapeChroot => Self::SwapOff,
+            Self::SwapOff => Self::UmountInnerPath,
+            Self::UmountInnerPath => Self::UmountEFIPath,
+            Self::UmountEFIPath => Self::UmountRootPath,
+            Self::UmountRootPath => Self::Done,
             Self::Done => Self::Done,
         }
     }
@@ -440,7 +449,10 @@ impl InstallConfig {
                 InstallationStage::GenerateSshKey => 7,
                 InstallationStage::ConfigureSystem => 8,
                 InstallationStage::EscapeChroot => 8,
-                InstallationStage::PostInstallation => 8,
+                InstallationStage::SwapOff => 8,
+                InstallationStage::UmountInnerPath => 8,
+                InstallationStage::UmountEFIPath => 8,
+                InstallationStage::UmountRootPath => 8,
                 InstallationStage::Done => 8,
             };
 
@@ -490,9 +502,30 @@ impl InstallConfig {
                 InstallationStage::EscapeChroot => self
                     .escape_chroot(progress.as_ref(), &cancel_install, &root_fd)
                     .context(EscapeChrootSnafu),
-                InstallationStage::PostInstallation => self
-                    .post_installation(progress.as_ref(), &tmp_mount_path)
+                InstallationStage::SwapOff => self
+                    .swapoff_impl(&tmp_mount_path)
                     .context(PostInstallationSnafu),
+                InstallationStage::UmountInnerPath => remove_files_mounts(&tmp_mount_path)
+                    .context(UmountInnerSnafu)
+                    .context(PostInstallationSnafu)
+                    .and_then(|_| Ok(true)),
+                InstallationStage::UmountEFIPath => {
+                    if is_efi_booted() {
+                        let path = tmp_mount_path.join("efi");
+                        umount_root_path(&path)
+                            .context(UmountSnafu { path })
+                            .context(PostInstallationSnafu)
+                            .and_then(|_| Ok(true))
+                    } else {
+                        Ok(true)
+                    }
+                }
+                InstallationStage::UmountRootPath => umount_root_path(&tmp_mount_path)
+                    .context(UmountSnafu {
+                        path: tmp_mount_path.to_path_buf(),
+                    })
+                    .context(PostInstallationSnafu)
+                    .and_then(|_| Ok(true)),
                 InstallationStage::Done => break,
             };
 
@@ -500,7 +533,7 @@ impl InstallConfig {
                 Ok(v) if v => stage.get_next_stage(),
                 Ok(_) => break,
                 Err(e) => {
-                    error!("Error occured in step {stage}: {e}");
+                    error!("Error occured in step {stage}: {e:?}");
 
                     if error_retry == 3 {
                         return Err(e);
@@ -792,16 +825,7 @@ impl InstallConfig {
         Ok(true)
     }
 
-    fn post_installation<F>(
-        &self,
-        progress: &F,
-        tmp_mount_path: &Path,
-    ) -> Result<bool, PostInstallationError>
-    where
-        F: Fn(f64) + Send + Sync + 'static,
-    {
-        progress(0.0);
-
+    fn swapoff_impl(&self, tmp_mount_path: &Path) -> Result<bool, PostInstallationError> {
         if self.swapfile != SwapFile::Disable || self.swapfile != SwapFile::Custom(0) {
             let mut retry = 1;
             while let Err(e) = swapoff(tmp_mount_path) {
@@ -815,22 +839,6 @@ impl InstallConfig {
                 std::thread::sleep(Duration::from_millis(500));
             }
         }
-
-        info!("Removing mounts ...");
-        remove_files_mounts(tmp_mount_path).context(UmountInnerSnafu)?;
-
-        info!("Unmounting filesystems...");
-
-        if is_efi_booted() {
-            let path = tmp_mount_path.join("efi");
-            umount_root_path(&path).context(UmountSnafu { path })?;
-        }
-
-        umount_root_path(tmp_mount_path).context(UmountSnafu {
-            path: tmp_mount_path.to_path_buf(),
-        })?;
-
-        progress(100.0);
 
         Ok(true)
     }
@@ -888,7 +896,6 @@ impl InstallConfig {
     }
 
     fn mount_partitions(&self, tmp_mount_path: &Path) -> Result<bool, MountError> {
-        use snafu::prelude::*;
         let fs_type = self
             .target_partition
             .fs_type
