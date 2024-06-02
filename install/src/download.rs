@@ -160,8 +160,6 @@ where
         .and_then(|x| x.error_for_status())
         .context(SendRequestSnafu)?;
 
-    let mut v = Sha256::new();
-
     let mut now = Instant::now();
     let mut v_download_len = 0;
     let mut download_len = 0;
@@ -186,14 +184,21 @@ where
             .context(WriteFileSnafu { path: path.clone() })?;
 
         progress((download_len as f64 / total_size as f64 * 100.0).round());
-        v.update(&chunk);
         v_download_len += chunk.len();
         download_len += chunk.len();
     }
 
+    let pc = path.clone();
+
     tokio::task::spawn_blocking(move || {
-        let download_hash = v.finalize().to_vec();
+        let mut file = std::fs::File::open(&pc).context(CreateFileSnafu { path: pc.clone() })?;
+
+        let mut sha256 = Sha256::new();
+        std::io::copy(&mut file, &mut sha256).context(WriteFileSnafu { path: pc.clone() })?;
+
+        let download_hash = sha256.finalize().to_vec();
         let checksum = hex::encode(download_hash);
+
         debug!("Right hash: {hash}");
         debug!("Now checksum: {checksum}");
         ensure!(checksum == hash, ChecksumMismatchSnafu);
