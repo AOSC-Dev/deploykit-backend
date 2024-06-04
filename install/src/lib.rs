@@ -24,12 +24,12 @@ use grub::RunGrubError;
 use locale::SetHwclockError;
 use mount::{mount_root_path, MountInnerError};
 use num_enum::IntoPrimitive;
-use rustix::io::Errno;
+use rustix::{fs::sync, io::Errno};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use swap::SwapFileError;
 use sysinfo::System;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use user::{AddUserError, SetFullNameError};
 use utils::RunCmdError;
 use zoneinfo::SetZoneinfoError;
@@ -535,7 +535,16 @@ impl InstallConfig {
                 Err(e) => {
                     error!("Error occured in step {stage}: {e:?}");
 
+                    sync();
+
                     if error_retry == 3 {
+                        if matches!(stage, InstallationStage::UmountRootPath)
+                            || matches!(stage, InstallationStage::UmountEFIPath)
+                            || matches!(stage, InstallationStage::UmountInnerPath)
+                        {
+                            warn!("avoid umount failed");
+                            return Ok(true);
+                        }
                         return Err(e);
                     }
 
