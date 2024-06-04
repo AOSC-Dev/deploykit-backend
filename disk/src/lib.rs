@@ -55,6 +55,8 @@ pub enum PartitionError {
     ClearSector(std::io::Error),
     #[error("Failed to flush disk: {0:?}")]
     Flush(std::io::Error),
+    #[error("Failed to read mounts: {0:?}")]
+    ReadMounts(std::io::Error),
 }
 
 impl Serialize for PartitionError {

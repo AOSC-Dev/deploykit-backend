@@ -1,7 +1,7 @@
 use std::{
     ffi::CStr,
     fs,
-    io::{self, Seek, SeekFrom, Write},
+    io::{self, BufRead, BufReader, ErrorKind, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -444,7 +444,8 @@ fn gpt_partition(gpt: &mut GPT, efi_size: u64, sector_size: u64, starting_lba: u
     };
 }
 
-pub fn all_esp_partitions() -> Vec<DkPartition> {
+pub fn all_esp_partitions() -> Result<Vec<DkPartition>, PartitionError> {
+    let root = find_root_mount_point()?;
     let devices = list_devices();
     let mut dev_path_and_sector = vec![];
 
@@ -464,11 +465,20 @@ pub fn all_esp_partitions() -> Vec<DkPartition> {
 
     let mut res = vec![];
 
-    for (path, lba) in dev_path_and_sector {
+    'a: for (path, lba) in dev_path_and_sector {
         if let Ok(mut d) = Device::new(&path) {
             let sector_size = d.sector_size();
-
             if let Ok(disk) = Disk::new(&mut d) {
+                // 不把 Livekit 的 EFI 分区加入到列表里
+                for i in disk.parts() {
+                    if i.get_path()
+                        .map(|p| p.to_string_lossy() == root)
+                        .unwrap_or(false)
+                    {
+                        continue 'a;
+                    }
+                }
+
                 let part = disk.get_partition_by_sector(lba as i64);
 
                 if let Some(mut part) = part {
@@ -490,5 +500,22 @@ pub fn all_esp_partitions() -> Vec<DkPartition> {
         }
     }
 
-    res
+    Ok(res)
+}
+
+fn find_root_mount_point() -> Result<String, PartitionError> {
+    let f = fs::File::open("/proc/mounts").map_err(PartitionError::ReadMounts)?;
+    let lines = BufReader::new(f).lines();
+
+    for i in lines.flatten() {
+        let i = i.split_ascii_whitespace().collect::<Vec<_>>();
+        if i[1] == "/" {
+            return Ok(i[0].to_string());
+        }
+    }
+
+    Err(PartitionError::ReadMounts(io::Error::new(
+        ErrorKind::InvalidInput,
+        "Failed to read /proc/mounts",
+    )))
 }
