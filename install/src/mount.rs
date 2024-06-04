@@ -132,17 +132,6 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), MountInnerError> {
         umount: false,
     })?;
 
-    mount_inner(
-        Some("run"),
-        &root.join("run"),
-        Some("devpts"),
-        MountFlags::NOSUID | MountFlags::NODEV,
-    )
-    .context(MountInnerSnafu {
-        point: "run",
-        umount: false,
-    })?;
-
     Ok(())
 }
 
@@ -156,7 +145,6 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), MountInnerError> {
         "dev",
         "dev/pts",
         "dev/shm",
-        "run",
     ];
 
     // 需要按顺序卸载挂载点
