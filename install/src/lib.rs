@@ -1,13 +1,8 @@
 use std::{
-    fmt::{Display, Formatter},
-    fs,
-    os::fd::OwnedFd,
-    path::{Path, PathBuf},
-    sync::{
+    fmt::{Display, Formatter}, fs, io, os::fd::OwnedFd, path::{Path, PathBuf}, sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
-    },
-    time::Duration,
+    }, time::Duration
 };
 
 use chroot::ChrootError;
@@ -24,7 +19,7 @@ use grub::RunGrubError;
 use locale::SetHwclockError;
 use mount::{mount_root_path, MountInnerError};
 use num_enum::IntoPrimitive;
-use rustix::{fs::sync, io::Errno};
+use rustix::{fs::sync, io::Errno, system::{reboot, RebootCommand}};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use swap::SwapFileError;
@@ -980,4 +975,11 @@ where
 
     cancel_install_exit!(cancel_install);
     Ok(true)
+}
+
+pub fn sync_and_reboot() -> io::Result<()> {
+    sync();
+    reboot(RebootCommand::Restart)?;
+
+    Ok(())
 }

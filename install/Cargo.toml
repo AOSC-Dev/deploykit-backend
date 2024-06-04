@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 sysinfo = "0.30"
 unsquashfs-wrapper = "0.2"
-rustix = { version = "0.38", features = ["process", "fs", "mount"] }
+rustix = { version = "0.38", features = ["process", "fs", "mount", "system"] }
 tracing = "0.1"
 disk = { path = "../disk" }
 libc = "0.2"

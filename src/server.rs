@@ -18,10 +18,7 @@ use disk::{
     PartitionError,
 };
 use install::{
-    chroot::{escape_chroot, get_dir_fd},
-    mount::{remove_files_mounts, sync_disk, umount_root_path},
-    swap::{get_recommend_swap_size, swapoff},
-    DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User,
+    chroot::{escape_chroot, get_dir_fd}, mount::{remove_files_mounts, sync_disk, umount_root_path}, swap::{get_recommend_swap_size, swapoff}, sync_and_reboot, DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -430,6 +427,15 @@ impl DeploykitServer {
         sync_disk();
 
         Message::ok(&"")
+    }
+
+    fn sync_and_reboot(&self) -> String {
+        let res = sync_and_reboot();
+
+        match res {
+            Ok(()) => Message::ok(&""),
+            Err(e) => Message::err(e.to_string()),
+        }
     }
 }
 
