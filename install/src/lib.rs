@@ -16,6 +16,7 @@ use download::{download_file, DownloadError};
 use extract::extract_squashfs;
 use genfstab::{genfstab_to_file, GenfstabError};
 use grub::RunGrubError;
+use libc::{c_int, LINUX_REBOOT_CMD_RESTART2};
 use locale::SetHwclockError;
 use mount::{mount_root_path, MountInnerError};
 use num_enum::IntoPrimitive;
@@ -979,7 +980,7 @@ where
 
 pub fn sync_and_reboot() -> io::Result<()> {
     sync();
-    reboot(RebootCommand::Restart)?;
+    unsafe { libc::reboot(LINUX_REBOOT_CMD_RESTART2) };
 
     Ok(())
 }
