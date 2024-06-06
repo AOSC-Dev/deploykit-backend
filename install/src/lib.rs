@@ -990,5 +990,8 @@ pub fn sync_and_reboot() -> io::Result<()> {
     // (https://man7.org/linux/man-pages/man2/reboot.2.html)
     unsafe { libc::reboot(LINUX_REBOOT_CMD_RESTART2) };
 
-    Ok(())
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "Failed to reboot system",
+    ))
 }
