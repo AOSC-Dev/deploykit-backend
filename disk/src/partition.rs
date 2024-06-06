@@ -507,7 +507,7 @@ fn find_root_mount_point() -> Result<String, PartitionError> {
     let f = fs::File::open("/proc/mounts").map_err(PartitionError::ReadMounts)?;
     let lines = BufReader::new(f).lines();
 
-    for i in lines.flatten() {
+    for i in lines.map_while(Result::ok) {
         let i = i.split_ascii_whitespace().collect::<Vec<_>>();
         if i[1] == "/" {
             return Ok(i[0].to_string());

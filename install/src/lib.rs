@@ -1,8 +1,13 @@
 use std::{
-    fmt::{Display, Formatter}, fs, io, os::fd::OwnedFd, path::{Path, PathBuf}, sync::{
+    fmt::{Display, Formatter},
+    fs, io,
+    os::fd::OwnedFd,
+    path::{Path, PathBuf},
+    sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
-    }, time::Duration
+    },
+    time::Duration,
 };
 
 use chroot::ChrootError;
@@ -16,11 +21,11 @@ use download::{download_file, DownloadError};
 use extract::extract_squashfs;
 use genfstab::{genfstab_to_file, GenfstabError};
 use grub::RunGrubError;
-use libc::{c_int, LINUX_REBOOT_CMD_RESTART2};
+use libc::LINUX_REBOOT_CMD_RESTART2;
 use locale::SetHwclockError;
 use mount::{mount_root_path, MountInnerError};
 use num_enum::IntoPrimitive;
-use rustix::{fs::sync, io::Errno, system::{reboot, RebootCommand}};
+use rustix::{fs::sync, io::Errno};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use swap::SwapFileError;
@@ -504,14 +509,14 @@ impl InstallConfig {
                 InstallationStage::UmountInnerPath => remove_files_mounts(&tmp_mount_path)
                     .context(UmountInnerSnafu)
                     .context(PostInstallationSnafu)
-                    .and_then(|_| Ok(true)),
+                    .map(|_| true),
                 InstallationStage::UmountEFIPath => {
                     if is_efi_booted() {
                         let path = tmp_mount_path.join("efi");
                         umount_root_path(&path)
                             .context(UmountSnafu { path })
                             .context(PostInstallationSnafu)
-                            .and_then(|_| Ok(true))
+                            .map(|_| true)
                     } else {
                         Ok(true)
                     }
@@ -521,7 +526,7 @@ impl InstallConfig {
                         path: tmp_mount_path.to_path_buf(),
                     })
                     .context(PostInstallationSnafu)
-                    .and_then(|_| Ok(true)),
+                    .map(|_| true),
                 InstallationStage::Done => break,
             };
 
@@ -912,7 +917,7 @@ impl InstallConfig {
         mount_root_path(
             self.target_partition.path.as_deref(),
             tmp_mount_path,
-            &fs_type,
+            fs_type,
         )
         .context(MountRootSnafu {
             path: self
@@ -980,6 +985,8 @@ where
 
 pub fn sync_and_reboot() -> io::Result<()> {
     sync();
+
+    // 软重启 (https://man7.org/linux/man-pages/man2/reboot.2.html)
     unsafe { libc::reboot(LINUX_REBOOT_CMD_RESTART2) };
 
     Ok(())
