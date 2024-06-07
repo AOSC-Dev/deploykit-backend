@@ -1,8 +1,10 @@
 use std::path::Path;
 
 use fancy_regex::Regex;
-use libparted::Device;
+use libparted::{Device, Disk};
 use tracing::info;
+
+use crate::{partition::find_root_mount_point, PartitionError};
 
 pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
     Device::devices(true).filter(|dev| {
@@ -17,6 +19,27 @@ pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
 
         is_sata || is_sdcard || is_nvme
     })
+}
+
+pub fn is_root_device(d: &mut Device) -> Result<bool, PartitionError> {
+    let root = find_root_mount_point()?;
+
+    for i in Disk::new(d)
+        .map_err(|e| PartitionError::OpenDisk {
+            path: "".to_string(),
+            err: e,
+        })?
+        .parts()
+    {
+        if i.get_path()
+            .map(|x| x.to_string_lossy() == root)
+            .unwrap_or(false)
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 pub fn sync_disk() {

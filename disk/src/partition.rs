@@ -503,7 +503,7 @@ pub fn all_esp_partitions() -> Result<Vec<DkPartition>, PartitionError> {
     Ok(res)
 }
 
-fn find_root_mount_point() -> Result<String, PartitionError> {
+pub fn find_root_mount_point() -> Result<String, PartitionError> {
     let f = fs::File::open("/proc/mounts").map_err(PartitionError::ReadMounts)?;
     let lines = BufReader::new(f).lines();
 

@@ -12,13 +12,16 @@ use std::{
 };
 
 use disk::{
-    devices::list_devices,
+    devices::{is_root_device, list_devices},
     is_efi_booted,
     partition::{self, all_esp_partitions, auto_create_partitions, list_partitions, DkPartition},
     PartitionError,
 };
 use install::{
-    chroot::{escape_chroot, get_dir_fd}, mount::{remove_files_mounts, sync_disk, umount_root_path}, swap::{get_recommend_swap_size, swapoff}, sync_and_reboot, DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User
+    chroot::{escape_chroot, get_dir_fd},
+    mount::{remove_files_mounts, sync_disk, umount_root_path},
+    swap::{get_recommend_swap_size, swapoff},
+    sync_and_reboot, DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -229,12 +232,22 @@ impl DeploykitServer {
 
     fn get_list_devices(&self) -> String {
         let mut res = vec![];
-        for i in list_devices() {
-            res.push(DkDevice {
-                path: i.path().display().to_string(),
-                model: i.model().to_string(),
-                size: i.sector_size() * i.length(),
-            });
+        for mut i in list_devices() {
+            let is_root_device = match is_root_device(&mut i) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("Failed to get root device: {e}");
+                    return Message::err(e);
+                }
+            };
+
+            if !is_root_device {
+                res.push(DkDevice {
+                    path: i.path().display().to_string(),
+                    model: i.model().to_string(),
+                    size: i.sector_size() * i.length(),
+                });
+            }
         }
 
         Message::ok(&res)
