@@ -1,6 +1,7 @@
 use std::{
     fmt::{Display, Formatter},
-    fs, io,
+    fs,
+    io::{self, Write},
     os::fd::OwnedFd,
     path::{Path, PathBuf},
     sync::{
@@ -21,11 +22,14 @@ use download::{download_file, DownloadError};
 use extract::extract_squashfs;
 use genfstab::{genfstab_to_file, GenfstabError};
 use grub::RunGrubError;
-use libc::LINUX_REBOOT_CMD_RESTART2;
 use locale::SetHwclockError;
 use mount::{mount_root_path, MountInnerError};
 use num_enum::IntoPrimitive;
-use rustix::{fs::sync, io::Errno};
+use rustix::{
+    fs::sync,
+    io::Errno,
+    system::{reboot, RebootCommand},
+};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use swap::SwapFileError;
@@ -986,12 +990,20 @@ where
 pub fn sync_and_reboot() -> io::Result<()> {
     sync();
 
-    // 复位
-    // (https://man7.org/linux/man-pages/man2/reboot.2.html)
-    unsafe { libc::reboot(LINUX_REBOOT_CMD_RESTART2) };
+    if sysrq_reboot().is_err() {
+        reboot(RebootCommand::Restart)?;
+    }
 
-    Err(io::Error::new(
-        io::ErrorKind::Other,
-        "Failed to reboot system",
-    ))
+    Ok(())
+}
+
+fn sysrq_reboot() -> io::Result<()> {
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .open("/proc/sysrq-trigger")?;
+
+    f.write_all(b"b")?;
+    f.sync_all()?;
+
+    Ok(())
 }
