@@ -298,6 +298,7 @@ fn clear_start_sector(f: &mut fs::File, sector_size: u64) -> Result<(), Partitio
         .map_err(PartitionError::SeekSector)?;
     let buf: Vec<u8> = vec![0; sector_size as usize];
     f.write_all(&buf).map_err(PartitionError::ClearSector)?;
+    f.sync_all().map_err(PartitionError::Flush)?;
 
     Ok(())
 }
