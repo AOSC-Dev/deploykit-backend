@@ -14,7 +14,7 @@ use std::{
 use disk::{
     devices::{is_root_device, list_devices},
     is_efi_booted,
-    partition::{self, all_esp_partitions, auto_create_partitions, list_partitions, DkPartition},
+    partition::{self, all_esp_partitions, auto_create_partitions, is_lvm_device, list_partitions, DkPartition},
     PartitionError,
 };
 use install::{
@@ -447,6 +447,15 @@ impl DeploykitServer {
 
         match res {
             Ok(()) => Message::ok(&""),
+            Err(e) => Message::err(e.to_string()),
+        }
+    }
+
+    fn is_lvm_device(&self, p: &str) -> String {
+        let res = is_lvm_device(Path::new(p));
+
+        match res {
+            Ok(v) => Message::ok(&v),
             Err(e) => Message::err(e.to_string()),
         }
     }

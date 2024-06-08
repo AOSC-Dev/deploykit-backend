@@ -64,12 +64,86 @@ pub fn get_partition_table_type(device_path: &Path) -> Result<String, io::Error>
 pub fn auto_create_partitions(
     dev_path: &Path,
 ) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
+    // 处理 lvm 的情况
+    if is_lvm_device(dev_path)? {
+        remove_all_lvm_devive()?;
+    }
+
     if is_efi_booted() {
         let (efi, system) = auto_create_partitions_gpt(dev_path)?;
         return Ok((Some(efi), system));
     }
 
     Ok((None, auto_create_partitions_mbr(dev_path)?))
+}
+
+fn remove_all_lvm_devive() -> Result<(), PartitionError> {
+    let output = Command::new("dmsetup")
+        .arg("ls")
+        .spawn()
+        .map_err(|e| PartitionError::DmSetup { source: e })?;
+
+    let lines = BufReader::new(output.stdout.ok_or_else(|| PartitionError::DmSetup {
+        source: io::Error::new(ErrorKind::BrokenPipe, "Failed to read dmsetup stdout"),
+    })?)
+    .lines();
+
+    for line in lines {
+        let line = line.map_err(|e| PartitionError::DmSetup { source: e })?;
+        let mut line = line.split_whitespace();
+        let lvm_name = line.next().ok_or_else(|| PartitionError::DmSetup {
+            source: io::Error::new(ErrorKind::BrokenPipe, "Failed to read dmsetup stdout"),
+        })?;
+
+        if lvm_name != "live-base" && lvm_name != "live-rw" {
+            let remove = Command::new("dmsetup")
+                .arg("remove")
+                .arg(lvm_name)
+                .output()
+                .map_err(|e| PartitionError::DmSetup { source: e })?;
+
+            if !remove.status.success() {
+                return Err(PartitionError::DmSetup {
+                    source: io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("Failed to remove lvm device: {}", lvm_name),
+                    ),
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn is_lvm_device(p: &Path) -> Result<bool, PartitionError> {
+    let cmd = Command::new("lvs")
+        .arg("--segments")
+        .arg("-o")
+        .arg("+device")
+        .output()
+        .map_err(PartitionError::OpenLvs)?;
+
+    if cmd.stdout.is_empty() {
+        return Ok(false);
+    }
+
+    for i in String::from_utf8_lossy(&cmd.stdout)
+        .to_string()
+        .split('\n')
+        .skip(1)
+    {
+        let mut split = i.split_whitespace();
+        if split
+            .next_back()
+            .map(|x| x.trim().starts_with(&p.to_string_lossy().to_string()))
+            .unwrap_or(false)
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {

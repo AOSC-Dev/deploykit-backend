@@ -57,6 +57,10 @@ pub enum PartitionError {
     Flush(std::io::Error),
     #[error("Failed to read mounts: {0:?}")]
     ReadMounts(std::io::Error),
+    #[error("Failed to open dmsetup")]
+    DmSetup { source: std::io::Error },
+    #[error("Failed to open lvs")]
+    OpenLvs(std::io::Error),
 }
 
 impl Serialize for PartitionError {
