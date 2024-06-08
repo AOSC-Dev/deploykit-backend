@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{self, Write},
+    io::{self},
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
@@ -60,7 +60,7 @@ pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), SwapFileE
     let swap_path = tempdir.join("swapfile");
 
     info!("Creating swapfile");
-    let mut swapfile = File::create(&swap_path).context(CreateFileSnafu {
+    let swapfile = File::create(&swap_path).context(CreateFileSnafu {
         path: swap_path.to_path_buf(),
     })?;
 
@@ -80,7 +80,7 @@ pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), SwapFileE
         });
     }
 
-    swapfile.flush().context(FlushSwapFileSnafu {
+    swapfile.sync_all().context(FlushSwapFileSnafu {
         path: swap_path.to_path_buf(),
     })?;
 
@@ -91,7 +91,9 @@ pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), SwapFileE
         },
     )?;
 
-    run_command("mkswap", [&swap_path]).context(MkswapSnafu { path: swap_path.clone() })?;
+    run_command("mkswap", [&swap_path]).context(MkswapSnafu {
+        path: swap_path.clone(),
+    })?;
     run_command("swapon", [swap_path]).ok();
 
     Ok(())

@@ -195,11 +195,10 @@ pub fn auto_create_partitions_gpt(
         })?;
 
     let sector_size = gptman::linux::get_sector_size(&mut f).map_err(PartitionError::GetTable)?;
+    clear_start_sector(&mut f, sector_size)?;
 
     // 创建新的分区表
     let mut gpt = GPT::new_from(&mut f, sector_size, generate_gpt_random_uuid())?;
-
-    clear_start_sector(&mut f, sector_size)?;
 
     // 写一个假的 MBR 保护分区头
     GPT::write_protective_mbr_into(&mut f, sector_size).map_err(PartitionError::GptMan)?;
@@ -215,7 +214,7 @@ pub fn auto_create_partitions_gpt(
 
     // 应用分区表的修改
     gpt.write_into(&mut f)?;
-    f.flush().map_err(PartitionError::Flush)?;
+    f.sync_all().map_err(PartitionError::Flush)?;
 
     // 重新读取分区表以读取刚刚的修改
     gptman::linux::reread_partition_table(&mut f).map_err(PartitionError::GetTable)?;
@@ -315,10 +314,9 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
     let sector_size =
         gptman::linux::get_sector_size(&mut f).map_err(PartitionError::GetTable)? as u32;
 
-    let mut mbr = MBR::new_from(&mut f, sector_size, mbr_disk_signature())?;
-
     clear_start_sector(&mut f, sector_size as u64)?;
 
+    let mut mbr = MBR::new_from(&mut f, sector_size, mbr_disk_signature())?;
     let sectors = mbr.get_maximum_partition_size()?;
     let starting_lba = mbr
         .find_optimal_place(sectors)
