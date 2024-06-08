@@ -7,7 +7,16 @@ use snafu::{ResultExt, Snafu};
 use std::path::Path;
 use tracing::debug;
 
+use crate::utils::{run_command, RunCmdError};
+
 const EFIVARS_PATH: &str = "sys/firmware/efi/efivars";
+
+#[derive(Debug, Snafu)]
+#[snafu(display("Failed to umount point: {point}"))]
+pub struct UmountError {
+    source: RunCmdError,
+    point: String,
+}
 
 /// Mount the filesystem
 pub(crate) fn mount_root_path(
@@ -43,9 +52,10 @@ fn mount_inner<P: AsRef<Path>>(
 }
 
 /// Unmount the filesystem given at `root` and then do a sync
-pub fn umount_root_path(root: &Path) -> Result<(), Errno> {
-    sync_disk();
-    mount::unmount(root, mount::UnmountFlags::empty())?;
+pub fn umount_root_path(root: &Path) -> Result<(), UmountError> {
+    run_command("umount", &[root]).context(UmountSnafu {
+        point: root.display().to_string(),
+    })?;
 
     Ok(())
 }
@@ -137,15 +147,8 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), MountInnerError> {
 
 /// Remove bind mounts
 /// Note: This function should be called outside of the chroot context
-pub fn remove_files_mounts(system_path: &Path) -> Result<(), MountInnerError> {
-    let mut mounts = [
-        "proc",
-        "sys",
-        EFIVARS_PATH,
-        "dev",
-        "dev/pts",
-        "dev/shm",
-    ];
+pub fn remove_files_mounts(system_path: &Path) -> Result<(), UmountError> {
+    let mut mounts = ["proc", "sys", EFIVARS_PATH, "dev", "dev/pts", "dev/shm"];
 
     // 需要按顺序卸载挂载点
     mounts.reverse();
@@ -158,16 +161,11 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), MountInnerError> {
         let mount_point = system_path.join(i);
 
         debug!("umounting point {}", mount_point.display());
-
-        let res =
-            mount::unmount(&mount_point, mount::UnmountFlags::empty()).context(MountInnerSnafu {
-                point: i,
-                umount: true,
-            });
-
-        debug!("{} umount result: {:?}", mount_point.display(), res);
-
-        res?;
+        run_command("umount", &[&mount_point.to_string_lossy().to_string()]).context(
+            UmountSnafu {
+                point: mount_point.display().to_string(),
+            },
+        )?;
     }
 
     Ok(())

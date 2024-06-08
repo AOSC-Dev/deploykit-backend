@@ -24,7 +24,7 @@ use extract::extract_squashfs;
 use genfstab::{genfstab_to_file, GenfstabError};
 use grub::RunGrubError;
 use locale::SetHwclockError;
-use mount::{mount_root_path, MountInnerError};
+use mount::{mount_root_path, UmountError};
 use num_enum::IntoPrimitive;
 use rustix::{
     fs::sync,
@@ -128,10 +128,8 @@ pub enum InstallErr {
 
 #[derive(Debug, Snafu)]
 pub enum PostInstallationError {
-    #[snafu(display("Failed to umount inner mount point"))]
-    UmountInner { source: MountInnerError },
-    #[snafu(display("Failed to umount root path: {}", path.display()))]
-    Umount { source: Errno, path: PathBuf },
+    #[snafu(display("Failed to umount point"))]
+    Umount { source: UmountError },
 }
 
 #[derive(Debug, Snafu)]
@@ -512,14 +510,14 @@ impl InstallConfig {
                     .swapoff_impl(&tmp_mount_path)
                     .context(PostInstallationSnafu),
                 InstallationStage::UmountInnerPath => remove_files_mounts(&tmp_mount_path)
-                    .context(UmountInnerSnafu)
+                    .context(UmountSnafu)
                     .context(PostInstallationSnafu)
                     .map(|_| true),
                 InstallationStage::UmountEFIPath => {
                     if is_efi_booted() {
                         let path = tmp_mount_path.join("efi");
                         umount_root_path(&path)
-                            .context(UmountSnafu { path })
+                            .context(UmountSnafu)
                             .context(PostInstallationSnafu)
                             .map(|_| true)
                     } else {
@@ -527,9 +525,7 @@ impl InstallConfig {
                     }
                 }
                 InstallationStage::UmountRootPath => umount_root_path(&tmp_mount_path)
-                    .context(UmountSnafu {
-                        path: tmp_mount_path.to_path_buf(),
-                    })
+                    .context(UmountSnafu)
                     .context(PostInstallationSnafu)
                     .map(|_| true),
                 InstallationStage::Done => break,
