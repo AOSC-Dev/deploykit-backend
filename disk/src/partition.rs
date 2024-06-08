@@ -12,7 +12,7 @@ use mbrman::MBR;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use tracing::info;
+use tracing::{debug, info};
 use uuid::{uuid, Uuid};
 
 use crate::{devices::list_devices, is_efi_booted, PartitionError};
@@ -80,27 +80,28 @@ pub fn auto_create_partitions(
 fn remove_all_lvm_devive() -> Result<(), PartitionError> {
     let output = Command::new("dmsetup")
         .arg("ls")
-        .spawn()
+        .output()
         .map_err(|e| PartitionError::DmSetup { source: e })?;
 
-    let lines = BufReader::new(output.stdout.ok_or_else(|| PartitionError::DmSetup {
-        source: io::Error::new(ErrorKind::BrokenPipe, "Failed to read dmsetup stdout"),
-    })?)
-    .lines();
+    let output = String::from_utf8_lossy(&output.stdout);
+    let lines = output.lines();
 
     for line in lines {
-        let line = line.map_err(|e| PartitionError::DmSetup { source: e })?;
         let mut line = line.split_whitespace();
         let lvm_name = line.next().ok_or_else(|| PartitionError::DmSetup {
             source: io::Error::new(ErrorKind::BrokenPipe, "Failed to read dmsetup stdout"),
         })?;
 
         if lvm_name != "live-base" && lvm_name != "live-rw" {
+            info!("Running dmsetup remove {}", lvm_name);
             let remove = Command::new("dmsetup")
                 .arg("remove")
                 .arg(lvm_name)
                 .output()
                 .map_err(|e| PartitionError::DmSetup { source: e })?;
+
+            debug!("Stdout: {}", String::from_utf8_lossy(&remove.stdout));
+            debug!("Stderr: {}", String::from_utf8_lossy(&remove.stderr));
 
             if !remove.status.success() {
                 return Err(PartitionError::DmSetup {
@@ -120,19 +121,12 @@ pub fn is_lvm_device(p: &Path) -> Result<bool, PartitionError> {
     let cmd = Command::new("lvs")
         .arg("--segments")
         .arg("-o")
-        .arg("+device")
+        .arg("+devices")
         .output()
         .map_err(PartitionError::OpenLvs)?;
 
-    if cmd.stdout.is_empty() {
-        return Ok(false);
-    }
-
-    for i in String::from_utf8_lossy(&cmd.stdout)
-        .to_string()
-        .split('\n')
-        .skip(1)
-    {
+    let output = String::from_utf8_lossy(&cmd.stdout);
+    for i in output.lines().skip(1) {
         let mut split = i.split_whitespace();
         if split
             .next_back()
