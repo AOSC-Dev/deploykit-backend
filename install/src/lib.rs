@@ -4,6 +4,7 @@ use std::{
     io::{self, Write},
     os::fd::OwnedFd,
     path::{Path, PathBuf},
+    process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -34,7 +35,7 @@ use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use swap::SwapFileError;
 use sysinfo::System;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use user::{AddUserError, SetFullNameError};
 use utils::RunCmdError;
 use zoneinfo::SetZoneinfoError;
@@ -547,7 +548,27 @@ impl InstallConfig {
                             || matches!(stage, InstallationStage::UmountEFIPath)
                             || matches!(stage, InstallationStage::UmountInnerPath)
                         {
-                            warn!("avoid umount failed");
+                            debug!(
+                                "Try to use umount -R {} to umount",
+                                tmp_mount_path.display()
+                            );
+                            if let Ok(out) = Command::new("umount")
+                                .arg("-R")
+                                .arg(&tmp_mount_path)
+                                .output()
+                            {
+                                debug!(
+                                    "umount -R {} stdout: {}",
+                                    tmp_mount_path.display(),
+                                    String::from_utf8_lossy(&out.stdout)
+                                );
+                                debug!(
+                                    "umount -R {} stderr: {}",
+                                    tmp_mount_path.display(),
+                                    String::from_utf8_lossy(&out.stderr)
+                                );
+                            }
+
                             return Ok(true);
                         }
                         return Err(e);

@@ -44,8 +44,8 @@ fn mount_inner<P: AsRef<Path>>(
 
 /// Unmount the filesystem given at `root` and then do a sync
 pub fn umount_root_path(root: &Path) -> Result<(), Errno> {
-    mount::unmount(root, mount::UnmountFlags::empty())?;
     sync_disk();
+    mount::unmount(root, mount::UnmountFlags::empty())?;
 
     Ok(())
 }
