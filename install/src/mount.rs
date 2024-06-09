@@ -15,7 +15,7 @@ const EFIVARS_PATH: &str = "sys/firmware/efi/efivars";
 #[snafu(display("Failed to umount point: {point}"))]
 pub struct UmountError {
     source: RunCmdError,
-    point: String,
+    pub point: String,
 }
 
 /// Mount the filesystem

@@ -272,25 +272,13 @@ impl From<&InstallErr> for DkError {
 impl From<&PostInstallationError> for DkError {
     fn from(value: &PostInstallationError) -> Self {
         match value {
-            PostInstallationError::UmountInner { source } => Self {
-                message: value.to_string(),
-                t: "UmountInner".to_string(),
-                data: {
-                    json!({
-                        "message": source.to_string(),
-                        "umount": source.umount,
-                        "point": source.point.to_string(),
-                    })
-                },
-            },
-            PostInstallationError::Umount { source, path } => Self {
+            PostInstallationError::Umount { source } => Self {
                 message: value.to_string(),
                 t: "Umount".to_string(),
                 data: {
                     json!({
                         "message": source.to_string(),
-                        "path": path.display().to_string(),
-                        "kind": source.kind().to_string(),
+                        "point": source.point,
                     })
                 },
             },
