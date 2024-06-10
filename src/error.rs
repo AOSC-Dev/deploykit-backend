@@ -282,6 +282,16 @@ impl From<&PostInstallationError> for DkError {
                     })
                 },
             },
+            PostInstallationError::Remove { source } => Self {
+                message: value.to_string(),
+                t: "Remove".to_string(),
+                data: {
+                    json!({
+                        "message": source.to_string(),
+                        "path": source.path,
+                    })
+                },
+            },
         }
     }
 }
