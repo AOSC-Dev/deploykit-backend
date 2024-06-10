@@ -5,6 +5,7 @@ use rustix::{
 };
 use snafu::{ResultExt, Snafu};
 use std::path::Path;
+use std::fs;
 use tracing::debug;
 
 use crate::utils::{run_command, RunCmdError};
@@ -16,6 +17,13 @@ const EFIVARS_PATH: &str = "sys/firmware/efi/efivars";
 pub struct UmountError {
     source: RunCmdError,
     pub point: String,
+}
+
+#[derive(Debug, Snafu)]
+#[snafu(display("Failed to remove file: {path}"))]
+pub struct RemoveError {
+    source: std::io::Error,
+    pub path: String,
 }
 
 /// Mount the filesystem
@@ -167,6 +175,19 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), UmountError> {
             },
         )?;
     }
+
+    Ok(())
+}
+
+
+pub fn remove_squash(system_path: &Path) -> Result<(), RemoveError> {
+    let squash_file = system_path.join("squashfs");
+
+    debug!("removing squash file {}", squash_file.display());
+
+    fs::remove_file(&squash_file).context(RemoveSnafu {
+        path: squash_file.display().to_string(),
+    })?;
 
     Ok(())
 }
