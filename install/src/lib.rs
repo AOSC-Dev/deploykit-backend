@@ -728,15 +728,12 @@ impl InstallConfig {
 
         velocity(0);
 
-        match self.download {
-            DownloadType::Http { .. } => {
-                debug!(
-                    "Removing downloaded squashfs file {}",
-                    squashfs_path.display()
-                );
-                fs::remove_file(&squashfs_path).context(RemoveDownloadedFileSnafu)?;
-            }
-            DownloadType::File(_) => {}
+        if let DownloadType::Http { .. } = self.download {
+            debug!(
+                "Removing downloaded squashfs file {}",
+                squashfs_path.display()
+            );
+            fs::remove_file(&squashfs_path).context(RemoveDownloadedFileSnafu)?;
         }
 
         Ok(true)
