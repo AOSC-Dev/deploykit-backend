@@ -1,7 +1,7 @@
 use fancy_regex::Regex;
 use libparted::{Device, Disk};
 use std::path::Path;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::PartitionError;
 
@@ -29,6 +29,7 @@ pub fn is_root_device(root: &str, d: &mut Device) -> Result<bool, PartitionError
     };
 
     for i in disk.parts() {
+        debug!("{} {:?}", root, i.get_path());
         if i.get_path()
             .map(|x| x.to_string_lossy() == root)
             .unwrap_or(false)
