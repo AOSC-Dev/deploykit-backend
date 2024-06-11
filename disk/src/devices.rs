@@ -1,9 +1,9 @@
-use std::path::Path;
 use fancy_regex::Regex;
 use libparted::{Device, Disk};
+use std::path::Path;
 use tracing::info;
 
-use crate::{partition::find_root_mount_point, PartitionError};
+use crate::PartitionError;
 
 pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
     Device::devices(true).filter(|dev| {
@@ -20,9 +20,7 @@ pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
     })
 }
 
-pub fn is_root_device(d: &mut Device) -> Result<bool, PartitionError> {
-    let root = find_root_mount_point()?;
-
+pub fn is_root_device(root: &str, d: &mut Device) -> Result<bool, PartitionError> {
     let disk = match Disk::new(d) {
         Ok(disk) => disk,
         Err(_) => {

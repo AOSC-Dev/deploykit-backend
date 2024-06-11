@@ -15,8 +15,7 @@ use disk::{
     devices::{is_root_device, list_devices},
     is_efi_booted,
     partition::{
-        self, all_esp_partitions, auto_create_partitions, is_lvm_device, list_partitions,
-        DkPartition,
+        self, all_esp_partitions, auto_create_partitions, find_root_mount_point, is_lvm_device, list_partitions, DkPartition
     },
     PartitionError,
 };
@@ -235,8 +234,16 @@ impl DeploykitServer {
 
     fn get_list_devices(&self) -> String {
         let mut res = vec![];
+        let root = match find_root_mount_point() {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to get root device: {e}");
+                return Message::err(e);
+            }
+        };
+
         for mut i in list_devices() {
-            let is_root_device = match is_root_device(&mut i) {
+            let is_root_device = match is_root_device(&root, &mut i) {
                 Ok(v) => v,
                 Err(e) => {
                     error!("Failed to get root device: {e}");
