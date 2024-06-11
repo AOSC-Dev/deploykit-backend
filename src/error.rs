@@ -11,8 +11,8 @@ use install::{
     user::{AddUserError, SetFullNameError},
     utils::RunCmdError,
     zoneinfo::SetZoneinfoError,
-    ConfigureSystemError, InstallErr, MountError, PostInstallationError, SetupGenfstabError,
-    SetupPartitionError,
+    ConfigureSystemError, InstallErr, InstallSquashfsError, MountError, PostInstallationError,
+    SetupGenfstabError, SetupPartitionError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -99,6 +99,35 @@ impl From<&RunGrubError> for DkError {
     }
 }
 
+impl From<&InstallSquashfsError> for DkError {
+    fn from(value: &InstallSquashfsError) -> Self {
+        match value {
+            InstallSquashfsError::Extract { source, from, to } => Self {
+                message: value.to_string(),
+                t: "ExtractSquashfs".to_string(),
+                data: {
+                    json!({
+                        "stage": 3,
+                        "message": source.to_string(),
+                        "from": from.display().to_string(),
+                        "to": to.display().to_string(),
+                    })
+                },
+            },
+            InstallSquashfsError::RemoveDownloadedFile { source } => Self {
+                message: value.to_string(),
+                t: "RemoveSquashfsFile".to_string(),
+                data: {
+                    json!({
+                        "stage": 3,
+                        "message": source.to_string(),
+                    })
+                },
+            },
+        }
+    }
+}
+
 impl From<&InstallErr> for DkError {
     fn from(value: &InstallErr) -> Self {
         match value {
@@ -148,14 +177,11 @@ impl From<&InstallErr> for DkError {
             InstallErr::ExtractSquashfs { source } => Self {
                 message: value.to_string(),
                 t: "ExtractSquashfs".to_string(),
-                data: {
-                    json!({
-                        "stage": 3,
-                        "message": source.to_string(),
-                        "from": source.from.display().to_string(),
-                        "to": source.to.display().to_string(),
-                    })
-                },
+                data: json!({
+                    "stage": 3,
+                    "message": source.to_string(),
+                    "data": DkError::from(source)
+                }),
             },
             InstallErr::Genfstab { source } => Self {
                 message: value.to_string(),
@@ -279,16 +305,6 @@ impl From<&PostInstallationError> for DkError {
                     json!({
                         "message": source.to_string(),
                         "point": source.point,
-                    })
-                },
-            },
-            PostInstallationError::Remove { source } => Self {
-                message: value.to_string(),
-                t: "Remove".to_string(),
-                data: {
-                    json!({
-                        "message": source.to_string(),
-                        "path": source.path,
                     })
                 },
             },

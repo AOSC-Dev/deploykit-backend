@@ -24,7 +24,7 @@ use extract::extract_squashfs;
 use genfstab::{genfstab_to_file, GenfstabError};
 use grub::RunGrubError;
 use locale::SetHwclockError;
-use mount::{mount_root_path, UmountError, RemoveError};
+use mount::{mount_root_path, UmountError};
 use num_enum::IntoPrimitive;
 use rustix::{
     fs::sync,
@@ -47,7 +47,7 @@ use crate::{
     grub::execute_grub_install,
     hostname::set_hostname,
     locale::{set_hwclock_tc, set_locale},
-    mount::{remove_files_mounts, umount_root_path, remove_squash},
+    mount::{remove_files_mounts, umount_root_path},
     ssh::gen_ssh_key,
     swap::{create_swapfile, get_recommend_swap_size, swapoff},
     user::{add_new_user, passwd_set_fullname},
@@ -107,7 +107,7 @@ pub enum InstallErr {
     #[snafu(display("Failed to download squashfs"))]
     DownloadSquashfs { source: download::DownloadError },
     #[snafu(display("Failed to extract squashfs"))]
-    ExtractSquashfs { source: ExtractError },
+    ExtractSquashfs { source: InstallSquashfsError },
     #[snafu(display("Failed to generate fstab"))]
     Genfstab { source: SetupGenfstabError },
     #[snafu(display("Failed to chroot"))]
@@ -130,9 +130,6 @@ pub enum InstallErr {
 pub enum PostInstallationError {
     #[snafu(display("Failed to umount point"))]
     Umount { source: UmountError },
-
-    #[snafu(display("Failed to remove squash"))]
-    Remove { source: RemoveError },
 }
 
 #[derive(Debug, Snafu)]
@@ -177,11 +174,15 @@ pub enum SetupGenfstabError {
 }
 
 #[derive(Debug, Snafu)]
-#[snafu(display("Failed to extract squashfs {} to {}", from.display(), to.display()))]
-pub struct ExtractError {
-    source: std::io::Error,
-    pub from: PathBuf,
-    pub to: PathBuf,
+pub enum InstallSquashfsError {
+    #[snafu(display("Failed to extract squashfs {} to {}", from.display(), to.display()))]
+    Extract {
+        source: std::io::Error,
+        from: PathBuf,
+        to: PathBuf,
+    },
+    #[snafu(display("Failed to remove downloaded squashfs file"))]
+    RemoveDownloadedFile { source: std::io::Error },
 }
 
 #[derive(Debug)]
@@ -358,7 +359,6 @@ enum InstallationStage {
     ConfigureSystem,
     EscapeChroot,
     SwapOff,
-    RemoveSquash,
     UmountInnerPath,
     UmountEFIPath,
     UmountRootPath,
@@ -385,7 +385,6 @@ impl Display for InstallationStage {
             Self::ConfigureSystem => "configure system",
             Self::EscapeChroot => "escape chroot",
             Self::SwapOff => "swap off",
-            Self::RemoveSquash => "remove squash",
             Self::UmountInnerPath => "umount inner path",
             Self::UmountEFIPath => "umount EFI path",
             Self::UmountRootPath => "umount root path",
@@ -409,8 +408,7 @@ impl InstallationStage {
             Self::GenerateSshKey => Self::ConfigureSystem,
             Self::ConfigureSystem => Self::EscapeChroot,
             Self::EscapeChroot => Self::SwapOff,
-            Self::SwapOff => Self::RemoveSquash,
-            Self::RemoveSquash => Self::UmountInnerPath,
+            Self::SwapOff => Self::UmountInnerPath,
             Self::UmountInnerPath => Self::UmountEFIPath,
             Self::UmountEFIPath => Self::UmountRootPath,
             Self::UmountRootPath => Self::Done,
@@ -460,7 +458,6 @@ impl InstallConfig {
                 InstallationStage::ConfigureSystem => 8,
                 InstallationStage::EscapeChroot => 8,
                 InstallationStage::SwapOff => 8,
-                InstallationStage::RemoveSquash => 8,
                 InstallationStage::UmountInnerPath => 8,
                 InstallationStage::UmountEFIPath => 8,
                 InstallationStage::UmountRootPath => 8,
@@ -516,10 +513,6 @@ impl InstallConfig {
                 InstallationStage::SwapOff => self
                     .swapoff_impl(&tmp_mount_path)
                     .context(PostInstallationSnafu),
-                InstallationStage::RemoveSquash => remove_squash(&tmp_mount_path)
-                    .context(RemoveSnafu)
-                    .context(PostInstallationSnafu)
-                    .map(|_| true),
                 InstallationStage::UmountInnerPath => remove_files_mounts(&tmp_mount_path)
                     .context(UmountSnafu)
                     .context(PostInstallationSnafu)
@@ -709,7 +702,7 @@ impl InstallConfig {
         cancel_install: &Arc<AtomicBool>,
         total_size: usize,
         squashfs_path: PathBuf,
-    ) -> Result<bool, ExtractError>
+    ) -> Result<bool, InstallSquashfsError>
     where
         F1: Fn(f64) + Send + Sync + 'static,
         F2: Fn(usize) + Send + Sync + 'static,
@@ -727,13 +720,24 @@ impl InstallConfig {
             cancel_install.clone(),
         )
         .context(ExtractSnafu {
-            from: squashfs_path,
+            from: squashfs_path.clone(),
             to: tmp_mount_path.to_path_buf(),
         })?;
 
         cancel_install_exit!(cancel_install);
 
         velocity(0);
+
+        match self.download {
+            DownloadType::Http { .. } => {
+                debug!(
+                    "Removing downloaded squashfs file {}",
+                    squashfs_path.display()
+                );
+                fs::remove_file(&squashfs_path).context(RemoveDownloadedFileSnafu)?;
+            }
+            DownloadType::File(_) => {}
+        }
 
         Ok(true)
     }
