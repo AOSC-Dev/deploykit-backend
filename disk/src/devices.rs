@@ -1,5 +1,4 @@
 use std::path::Path;
-
 use fancy_regex::Regex;
 use libparted::{Device, Disk};
 use tracing::info;
@@ -24,13 +23,14 @@ pub fn list_devices() -> impl Iterator<Item = Device<'static>> {
 pub fn is_root_device(d: &mut Device) -> Result<bool, PartitionError> {
     let root = find_root_mount_point()?;
 
-    for i in Disk::new(d)
-        .map_err(|e| PartitionError::OpenDisk {
-            path: "".to_string(),
-            err: e,
-        })?
-        .parts()
-    {
+    let disk = match Disk::new(d) {
+        Ok(disk) => disk,
+        Err(_) => {
+            return Ok(false);
+        }
+    };
+
+    for i in disk.parts() {
         if i.get_path()
             .map(|x| x.to_string_lossy() == root)
             .unwrap_or(false)

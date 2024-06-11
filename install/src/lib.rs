@@ -24,7 +24,7 @@ use extract::extract_squashfs;
 use genfstab::{genfstab_to_file, GenfstabError};
 use grub::RunGrubError;
 use locale::SetHwclockError;
-use mount::{mount_root_path, UmountError};
+use mount::{mount_root_path, UmountError, RemoveError};
 use num_enum::IntoPrimitive;
 use rustix::{
     fs::sync,
@@ -47,7 +47,7 @@ use crate::{
     grub::execute_grub_install,
     hostname::set_hostname,
     locale::{set_hwclock_tc, set_locale},
-    mount::{remove_files_mounts, umount_root_path},
+    mount::{remove_files_mounts, umount_root_path, remove_squash},
     ssh::gen_ssh_key,
     swap::{create_swapfile, get_recommend_swap_size, swapoff},
     user::{add_new_user, passwd_set_fullname},
@@ -130,6 +130,9 @@ pub enum InstallErr {
 pub enum PostInstallationError {
     #[snafu(display("Failed to umount point"))]
     Umount { source: UmountError },
+
+    #[snafu(display("Failed to remove squash"))]
+    Remove { source: RemoveError },
 }
 
 #[derive(Debug, Snafu)]
@@ -355,6 +358,7 @@ enum InstallationStage {
     ConfigureSystem,
     EscapeChroot,
     SwapOff,
+    RemoveSquash,
     UmountInnerPath,
     UmountEFIPath,
     UmountRootPath,
@@ -381,6 +385,7 @@ impl Display for InstallationStage {
             Self::ConfigureSystem => "configure system",
             Self::EscapeChroot => "escape chroot",
             Self::SwapOff => "swap off",
+            Self::RemoveSquash => "remove squash",
             Self::UmountInnerPath => "umount inner path",
             Self::UmountEFIPath => "umount EFI path",
             Self::UmountRootPath => "umount root path",
@@ -404,7 +409,8 @@ impl InstallationStage {
             Self::GenerateSshKey => Self::ConfigureSystem,
             Self::ConfigureSystem => Self::EscapeChroot,
             Self::EscapeChroot => Self::SwapOff,
-            Self::SwapOff => Self::UmountInnerPath,
+            Self::SwapOff => Self::RemoveSquash,
+            Self::RemoveSquash => Self::UmountInnerPath,
             Self::UmountInnerPath => Self::UmountEFIPath,
             Self::UmountEFIPath => Self::UmountRootPath,
             Self::UmountRootPath => Self::Done,
@@ -454,6 +460,7 @@ impl InstallConfig {
                 InstallationStage::ConfigureSystem => 8,
                 InstallationStage::EscapeChroot => 8,
                 InstallationStage::SwapOff => 8,
+                InstallationStage::RemoveSquash => 8,
                 InstallationStage::UmountInnerPath => 8,
                 InstallationStage::UmountEFIPath => 8,
                 InstallationStage::UmountRootPath => 8,
@@ -509,6 +516,10 @@ impl InstallConfig {
                 InstallationStage::SwapOff => self
                     .swapoff_impl(&tmp_mount_path)
                     .context(PostInstallationSnafu),
+                InstallationStage::RemoveSquash => remove_squash(&tmp_mount_path)
+                    .context(RemoveSnafu)
+                    .context(PostInstallationSnafu)
+                    .map(|_| true),
                 InstallationStage::UmountInnerPath => remove_files_mounts(&tmp_mount_path)
                     .context(UmountSnafu)
                     .context(PostInstallationSnafu)

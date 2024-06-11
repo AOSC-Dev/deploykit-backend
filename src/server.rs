@@ -19,7 +19,7 @@ use disk::{
 };
 use install::{
     chroot::{escape_chroot, get_dir_fd},
-    mount::{remove_files_mounts, sync_disk, umount_root_path},
+    mount::{remove_files_mounts, remove_squash, sync_disk, umount_root_path},
     swap::{get_recommend_swap_size, swapoff},
     sync_and_reboot, DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User,
 };
@@ -754,6 +754,9 @@ fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
 
     sync_disk();
     swapoff(&tmp_dir).ok();
+
+    sync_disk();
+    remove_squash(&tmp_dir).ok();
 
     sync_disk();
     remove_files_mounts(&tmp_dir).ok();
