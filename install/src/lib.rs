@@ -571,7 +571,6 @@ impl InstallConfig {
 
                             return Ok(true);
                         }
-
                         return Err(e);
                     }
 

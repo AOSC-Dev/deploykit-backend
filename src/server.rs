@@ -14,7 +14,10 @@ use std::{
 use disk::{
     devices::{is_root_device, list_devices},
     is_efi_booted,
-    partition::{self, all_esp_partitions, auto_create_partitions, is_lvm_device, list_partitions, DkPartition},
+    partition::{
+        self, all_esp_partitions, auto_create_partitions, is_lvm_device, list_partitions,
+        DkPartition,
+    },
     PartitionError,
 };
 use install::{
@@ -736,6 +739,7 @@ fn start_install_inner(
                 if let Ok(e) = rx.recv_timeout(Duration::from_millis(10)) {
                     error!("Failed to install system: {e:?}");
                     *ps = ProgressStatus::Error(e);
+                    safe_exit_env(root_fd, tmp_dir_clone2);
                     return;
                 }
 
