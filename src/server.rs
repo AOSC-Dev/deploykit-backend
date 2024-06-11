@@ -754,7 +754,7 @@ fn start_install_inner(
 
 fn exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     sync_disk();
-    escape_chroot(root_fd.try_clone().unwrap()).ok();
+    root_fd.try_clone().map(|x| escape_chroot(x)).ok();
 
     sync_disk();
     swapoff(&tmp_dir).ok();
