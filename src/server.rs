@@ -675,7 +675,7 @@ fn start_install_inner(
 
     ctrlc::set_handler(move || {
         if let Ok(root_fd) = root_fd_clone.try_clone() {
-            safe_exit_env(root_fd, tmp_dir_clone3.clone());
+            exit_env(root_fd, tmp_dir_clone3.clone());
         } else {
             warn!("Failed to clone root_fd");
         }
@@ -725,7 +725,7 @@ fn start_install_inner(
             if install_thread.is_finished() {
                 // 需要先确保安装线程已经结束再退出环境
                 if is_cancel {
-                    safe_exit_env(root_fd, tmp_dir_clone2);
+                    exit_env(root_fd, tmp_dir_clone2);
                     cancel_install.store(false, Ordering::SeqCst);
                     {
                         let mut ps = ps.lock().unwrap();
@@ -739,7 +739,7 @@ fn start_install_inner(
                 if let Ok(e) = rx.recv_timeout(Duration::from_millis(10)) {
                     error!("Failed to install system: {e:?}");
                     *ps = ProgressStatus::Error(e);
-                    safe_exit_env(root_fd, tmp_dir_clone2);
+                    exit_env(root_fd, tmp_dir_clone2);
                     return;
                 }
 
@@ -752,7 +752,7 @@ fn start_install_inner(
     Ok(t)
 }
 
-fn safe_exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
+fn exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     sync_disk();
     escape_chroot(root_fd.try_clone().unwrap()).ok();
 
