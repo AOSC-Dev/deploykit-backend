@@ -309,7 +309,6 @@ impl DeploykitServer {
                     {
                         let mut lock = auto_partition_progress.lock().unwrap();
                         *lock = AutoPartitionProgress::Finish { res: Ok((efi, p)) };
-                        *lock = AutoPartitionProgress::Pending;
                     }
                 }
                 Err(e) => {
@@ -317,7 +316,6 @@ impl DeploykitServer {
                     {
                         let mut lock = auto_partition_progress.lock().unwrap();
                         *lock = AutoPartitionProgress::Finish { res: Err(e) };
-                        *lock = AutoPartitionProgress::Pending;
                     }
                 }
             }
