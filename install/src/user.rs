@@ -1,5 +1,5 @@
 use std::{
-    io::{Read, Seek, SeekFrom, Write},
+    io::{self, BufRead, BufReader, Seek, SeekFrom, Write},
     process::{Command, Stdio},
 };
 
@@ -43,9 +43,11 @@ pub(crate) fn passwd_set_fullname(full_name: &str, username: &str) -> Result<(),
         .open("/etc/passwd")
         .context(OperatePasswdFileSnafu)?;
 
-    let mut buf = String::new();
-    f.read_to_string(&mut buf).context(OperatePasswdFileSnafu)?;
-    let mut passwd = buf.split('\n').map(|x| x.to_string()).collect::<Vec<_>>();
+    let reader = BufReader::new(&f);
+    let mut passwd = reader
+        .lines()
+        .collect::<io::Result<Vec<_>>>()
+        .map_err(|_| SetFullNameError::BrokenPassswd)?;
 
     set_full_name(full_name, username, &mut passwd)?;
     f.seek(SeekFrom::Start(0)).context(OperatePasswdFileSnafu)?;
