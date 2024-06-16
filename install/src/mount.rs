@@ -53,7 +53,7 @@ fn mount_inner<P: AsRef<Path>>(
 
 /// Unmount the filesystem given at `root` and then do a sync
 pub fn umount_root_path(root: &Path) -> Result<(), UmountError> {
-    run_command("umount", &[root]).context(UmountSnafu {
+    run_command("umount", [root]).context(UmountSnafu {
         point: root.display().to_string(),
     })?;
 
@@ -161,7 +161,7 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), UmountError> {
         let mount_point = system_path.join(i);
 
         debug!("umounting point {}", mount_point.display());
-        run_command("umount", &[&mount_point.to_string_lossy().to_string()]).context(
+        run_command("umount", [&mount_point.to_string_lossy().to_string()]).context(
             UmountSnafu {
                 point: mount_point.display().to_string(),
             },
@@ -170,4 +170,3 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), UmountError> {
 
     Ok(())
 }
-

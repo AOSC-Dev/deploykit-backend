@@ -27,13 +27,18 @@ where
     let cmd = Command::new(command)
         .args(args)
         .output()
-        .context(ExecSnafu { cmd: cmd_str.to_string() })?;
+        .context(ExecSnafu {
+            cmd: cmd_str.to_string(),
+        })?;
 
-    ensure!(cmd.status.success(), RunFailedSnafu {
-        cmd: cmd_str,
-        stdout: String::from_utf8_lossy(&cmd.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&cmd.stderr).to_string(),
-    });
+    ensure!(
+        cmd.status.success(),
+        RunFailedSnafu {
+            cmd: cmd_str,
+            stdout: String::from_utf8_lossy(&cmd.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&cmd.stderr).to_string(),
+        }
+    );
 
     info!("Run {} Successfully!", cmd_str);
 

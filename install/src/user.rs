@@ -67,28 +67,21 @@ fn set_full_name(
         );
     }
 
-    let mut index = None;
-
-    for (i, c) in passwd.iter().enumerate() {
-        if c.trim().is_empty() {
+    for i in passwd {
+        if i.trim().is_empty() {
             continue;
         }
 
-        let (entry_username, _) = c.split_once(':').context(BrokenPassswdSnafu)?;
+        let (entry_username, _) = i.split_once(':').context(BrokenPassswdSnafu)?;
 
         if entry_username == username {
-            index = Some(i);
+            let mut entry = i.split(':').collect::<Vec<_>>();
+            // entry 结构为 USERNAME:x:1000:1001:FULLNAME:/home/USERNAME:/bin/bash
+            entry[4] = full_name;
+            *i = entry.join(":");
             break;
         }
     }
-
-    let index = index.context(BrokenPassswdSnafu)?;
-    let mut entry = passwd[index].split(':').collect::<Vec<_>>();
-
-    // entry 结构为 USERNAME:x:1000:1001:FULLNAME:/home/USERNAME:/bin/bash
-    entry[4] = full_name;
-
-    passwd[index] = entry.join(":").to_owned();
 
     Ok(())
 }

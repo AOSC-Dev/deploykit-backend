@@ -15,7 +15,8 @@ use disk::{
     devices::{is_root_device, list_devices},
     is_efi_booted,
     partition::{
-        self, all_esp_partitions, auto_create_partitions, find_root_mount_point, is_lvm_device, list_partitions, DkPartition
+        self, all_esp_partitions, auto_create_partitions, find_root_mount_point, is_lvm_device,
+        list_partitions, DkPartition,
     },
     PartitionError,
 };
@@ -298,7 +299,7 @@ impl DeploykitServer {
                 Ok((efi, p)) => {
                     {
                         let mut lock = efi_arc.lock().unwrap();
-                        *lock = efi.clone();
+                        lock.clone_from(&efi);
                     }
 
                     {
@@ -761,7 +762,7 @@ fn start_install_inner(
 
 fn exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
     sync_disk();
-    root_fd.try_clone().map(|x| escape_chroot(x)).ok();
+    root_fd.try_clone().map(escape_chroot).ok();
 
     sync_disk();
     swapoff(&tmp_dir).ok();
