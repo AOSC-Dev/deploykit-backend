@@ -16,6 +16,8 @@ pub enum SetFullNameError {
     Illegal { fullname: String },
     #[snafu(display("/etc/passwd is broken"))]
     BrokenPassswd,
+    #[snafu(display("Failed to file user name in /etc/passwd: {username}"))]
+    InvaildUsername { username: String },
 }
 
 #[derive(Debug, Snafu)]
@@ -67,6 +69,8 @@ fn set_full_name(
         );
     }
 
+    let mut is_set = false;
+
     for i in passwd {
         if i.trim().is_empty() {
             continue;
@@ -77,11 +81,19 @@ fn set_full_name(
         if entry_username == username {
             let mut entry = i.split(':').collect::<Vec<_>>();
             // entry 结构为 USERNAME:x:1000:1001:FULLNAME:/home/USERNAME:/bin/bash
-            entry[4] = full_name;
+            *entry.get_mut(4).context(BrokenPassswdSnafu)? = full_name;
             *i = entry.join(":");
+            is_set = true;
             break;
         }
     }
+
+    ensure!(
+        is_set,
+        InvaildUsernameSnafu {
+            username: username.to_string()
+        }
+    );
 
     Ok(())
 }

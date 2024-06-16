@@ -424,6 +424,15 @@ impl From<&SetFullNameError> for DkError {
                 t: "BrokenPassswd".to_string(),
                 data: { json!({}) },
             },
+            SetFullNameError::InvaildUsername { username } => Self {
+                message: value.to_string(),
+                t: "InvaildUsername".to_string(),
+                data: {
+                    json!({
+                        "username": username.to_string(),
+                    })
+                },
+            }
         }
     }
 }
