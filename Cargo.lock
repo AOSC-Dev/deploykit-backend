@@ -825,6 +825,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "faster-hex"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2a2b11eda1d40935b26cf18f6833c526845ae8c41e58d09af6adeb6f0269183"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1175,8 +1184,8 @@ name = "install"
 version = "0.1.0"
 dependencies = [
  "disk",
+ "faster-hex",
  "fstab-generate",
- "hex",
  "libc",
  "num_enum",
  "reqwest",

@@ -17,7 +17,7 @@ reqwest = "0.12"
 tokio = { version = "1.35", features = ["rt-multi-thread", "fs"] }
 sha2 = "0.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
-hex = "0.4"
+faster-hex = "0.9"
 serde_json = "1.0.111"
 num_enum = "0.7.2"
 snafu = "0.8.2"

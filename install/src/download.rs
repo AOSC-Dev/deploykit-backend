@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, thread};
 
+use faster_hex::hex_string;
 use reqwest::header::HeaderValue;
 use reqwest::{header::CONTENT_LENGTH, Client};
 use sha2::Digest;
@@ -197,7 +198,7 @@ where
         std::io::copy(&mut file, &mut sha256).context(WriteFileSnafu { path: pc.clone() })?;
 
         let download_hash = sha256.finalize().to_vec();
-        let checksum = hex::encode(download_hash);
+        let checksum = hex_string(&download_hash);
 
         debug!("Right hash: {hash}");
         debug!("Now checksum: {checksum}");
