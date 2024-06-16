@@ -432,7 +432,7 @@ impl From<&SetFullNameError> for DkError {
                         "username": username.to_string(),
                     })
                 },
-            }
+            },
         }
     }
 }

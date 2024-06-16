@@ -172,7 +172,7 @@ nm-openconnect:x:104:104:NetworkManager user for OpenConnect:/:/sbin/nologin
 saki:x:1000:1001::/home/saki:/bin/bash
 pulse:x:58:58:PulseAudio Daemon Owner:/var/run/pulse:/bin/false
 _apt:x:976:976::/var/lib/apt:/sbin/nologin
-"#.split('\n').map(|x| x.to_string()).collect::<Vec<_>>();
+"#.lines().map(|x| x.to_string()).collect::<Vec<_>>();
     let mut passwd_2 = passwd_1.clone();
     let mut passwd_3 = passwd_1.clone();
 
