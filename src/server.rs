@@ -664,12 +664,12 @@ fn start_install_inner(
         .into_path()
         .to_path_buf();
 
-    let tmp_dir_clone = temp_dir.clone();
-    let tmp_dir_clone2 = tmp_dir_clone.clone();
-    let tmp_dir_clone3 = tmp_dir_clone.clone();
+    let tmp_dir = Arc::new(temp_dir);
+    let tmp_dir_clone2 = tmp_dir.clone();
+    let tmp_dir_clone3 = tmp_dir.clone();
 
     if let DownloadType::Http { to_path, .. } = &mut config.download {
-        *to_path = Some(tmp_dir_clone.join("squashfs"));
+        *to_path = Some(tmp_dir.join("squashfs"));
     }
 
     let root_fd = get_dir_fd(Path::new("/"))
@@ -698,6 +698,8 @@ fn start_install_inner(
 
     let t = thread::spawn(move || {
         let (tx, rx) = mpsc::channel();
+        let t = tmp_dir_clone2.clone();
+        let t2 = tmp_dir_clone2.clone();
         let install_thread = thread::spawn(move || {
             let res = config
                 .start_install(
@@ -708,7 +710,7 @@ fn start_install_inner(
                         progress_tx.send(progress).unwrap();
                     },
                     move |v| v_tx.send(v).unwrap(),
-                    temp_dir,
+                    t,
                     cancel_install_clone,
                 )
                 .map_err(|e| DkError::from(&e));
@@ -733,7 +735,7 @@ fn start_install_inner(
             if install_thread.is_finished() {
                 // 需要先确保安装线程已经结束再退出环境
                 if is_cancel {
-                    exit_env(root_fd, tmp_dir_clone2);
+                    exit_env(root_fd, tmp_dir_clone2.clone());
                     cancel_install.store(false, Ordering::SeqCst);
                     {
                         let mut ps = ps.lock().unwrap();
@@ -747,7 +749,7 @@ fn start_install_inner(
                 if let Ok(e) = rx.recv_timeout(Duration::from_millis(10)) {
                     error!("Failed to install system: {e:?}");
                     *ps = ProgressStatus::Error(e);
-                    exit_env(root_fd, tmp_dir_clone2);
+                    exit_env(root_fd, t2);
                     return;
                 }
 
@@ -760,9 +762,9 @@ fn start_install_inner(
     Ok(t)
 }
 
-fn exit_env(root_fd: OwnedFd, tmp_dir: PathBuf) {
+fn exit_env(root_fd: OwnedFd, tmp_dir: Arc<PathBuf>) {
     sync_disk();
-    root_fd.try_clone().map(escape_chroot).ok();
+    escape_chroot(root_fd).ok();
 
     sync_disk();
     swapoff(&tmp_dir).ok();

@@ -423,7 +423,7 @@ impl InstallConfig {
         step: F,
         progress: F2,
         velocity: F3,
-        tmp_mount_path: PathBuf,
+        tmp_mount_path: Arc<PathBuf>,
         cancel_install: Arc<AtomicBool>,
     ) -> Result<bool, InstallErr>
     where
@@ -554,7 +554,7 @@ impl InstallConfig {
                             );
                             if let Ok(out) = Command::new("umount")
                                 .arg("-R")
-                                .arg(&tmp_mount_path)
+                                .arg(&*tmp_mount_path)
                                 .output()
                             {
                                 debug!(
