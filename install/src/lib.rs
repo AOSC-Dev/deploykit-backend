@@ -19,8 +19,8 @@ use disk::{
     PartitionError,
 };
 
-use download::{download_file, DownloadError};
-use extract::extract_squashfs;
+use download::{download_file, DownloadError, FilesType};
+use extract::{extract_squashfs, rsync_system, RsyncError};
 use genfstab::{genfstab_to_file, GenfstabError};
 use grub::RunGrubError;
 use locale::SetHwclockError;
@@ -183,6 +183,8 @@ pub enum InstallSquashfsError {
     },
     #[snafu(display("Failed to remove downloaded squashfs file"))]
     RemoveDownloadedFile { source: std::io::Error },
+    #[snafu(transparent)]
+    RsyncError { source: RsyncError },
 }
 
 #[derive(Debug)]
@@ -241,6 +243,7 @@ pub enum DownloadType {
         to_path: Option<PathBuf>,
     },
     File(PathBuf),
+    Dir(PathBuf),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -437,8 +440,7 @@ impl InstallConfig {
 
         let mut stage = InstallationStage::default();
 
-        let mut squashfs_path = None;
-        let mut squashfs_total_size = None;
+        let mut files_type = None;
 
         let mut error_retry = 1;
 
@@ -475,7 +477,7 @@ impl InstallConfig {
                         Arc::clone(&progress),
                         Arc::clone(&velocity),
                         Arc::clone(&cancel_install),
-                        (&mut squashfs_path, &mut squashfs_total_size),
+                        &mut files_type,
                     )
                     .context(DownloadSquashfsSnafu),
                 InstallationStage::ExtractSquashfs => self
@@ -485,8 +487,7 @@ impl InstallConfig {
                         &tmp_mount_path,
                         &cancel_install,
                         // 若能进行到这一步，则 squashfs_total_size 一定有值，故 unwrap 安全
-                        squashfs_total_size.unwrap(),
-                        squashfs_path.clone().unwrap(),
+                        files_type.take().unwrap(),
                     )
                     .context(ExtractSquashfsSnafu),
                 InstallationStage::GenerateFstab => self
@@ -674,7 +675,7 @@ impl InstallConfig {
         progress: Arc<F1>,
         velocity: Arc<F2>,
         cancel_install: Arc<AtomicBool>,
-        res: (&mut Option<PathBuf>, &mut Option<usize>),
+        res: &mut Option<FilesType>,
     ) -> Result<bool, DownloadError>
     where
         F1: Fn(f64) + Send + Sync + 'static,
@@ -684,11 +685,9 @@ impl InstallConfig {
 
         cancel_install_exit!(cancel_install);
 
-        let (squashfs_path, total_size) =
-            download_file(&self.download, progress, velocity, cancel_install)?;
+        let f = download_file(&self.download, progress, velocity, cancel_install)?;
 
-        *res.0 = Some(squashfs_path);
-        *res.1 = Some(total_size);
+        *res = Some(f);
 
         Ok(true)
     }
@@ -699,8 +698,7 @@ impl InstallConfig {
         velocity: &F2,
         tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
-        total_size: usize,
-        squashfs_path: PathBuf,
+        files_type: FilesType,
     ) -> Result<bool, InstallSquashfsError>
     where
         F1: Fn(f64) + Send + Sync + 'static,
@@ -710,27 +708,48 @@ impl InstallConfig {
 
         cancel_install_exit!(cancel_install);
 
-        extract_squashfs(
-            total_size as f64,
-            squashfs_path.clone(),
-            tmp_mount_path.to_path_buf(),
-            progress,
-            velocity,
-            cancel_install.clone(),
-        )
-        .context(ExtractSnafu {
-            from: squashfs_path.clone(),
-            to: tmp_mount_path.to_path_buf(),
-        })?;
+        match files_type {
+            FilesType::File {
+                path: squashfs_path,
+                total: total_size,
+            } => {
+                extract_squashfs(
+                    total_size as f64,
+                    squashfs_path.clone(),
+                    tmp_mount_path.to_path_buf(),
+                    progress,
+                    velocity,
+                    cancel_install.clone(),
+                )
+                .context(ExtractSnafu {
+                    from: squashfs_path.clone(),
+                    to: tmp_mount_path.to_path_buf(),
+                })?;
 
-        cancel_install_exit!(cancel_install);
+                cancel_install_exit!(cancel_install);
 
-        if let DownloadType::Http { .. } = self.download {
-            debug!(
-                "Removing downloaded squashfs file {}",
-                squashfs_path.display()
-            );
-            fs::remove_file(&squashfs_path).context(RemoveDownloadedFileSnafu)?;
+                if let DownloadType::Http { .. } = self.download {
+                    debug!(
+                        "Removing downloaded squashfs file {}",
+                        squashfs_path.display()
+                    );
+                    fs::remove_file(&squashfs_path).context(RemoveDownloadedFileSnafu)?;
+                }
+            }
+            FilesType::Dir { path, total } => {
+                cancel_install_exit!(cancel_install);
+
+                rsync_system(
+                    progress,
+                    velocity,
+                    &path,
+                    tmp_mount_path,
+                    cancel_install.clone(),
+                    total
+                )?;
+
+                cancel_install_exit!(cancel_install);
+            }
         }
 
         velocity(0);

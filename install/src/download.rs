@@ -49,12 +49,24 @@ pub enum DownloadError {
     },
 }
 
+pub enum FilesType {
+    File { path: PathBuf, total: usize },
+    Dir { path: PathBuf, total: usize },
+}
+
+#[derive(Debug, Clone)]
+pub struct OverlayEntry {
+    pub path: PathBuf,
+    pub total: usize,
+    pub percent: f32,
+}
+
 pub(crate) fn download_file<F, F2>(
     download_type: &DownloadType,
     progress: Arc<F>,
     velocity: Arc<F2>,
     cancel_install: Arc<AtomicBool>,
-) -> Result<(PathBuf, usize), DownloadError>
+) -> Result<FilesType, DownloadError>
 where
     F: Fn(f64) + Sync + Send + 'static,
     F2: Fn(usize) + Send + Sync + 'static,
@@ -62,10 +74,11 @@ where
     match download_type {
         DownloadType::Http { url, hash, to_path } => {
             let to_path = to_path.as_ref().context(DownloadPathIsNotSetSnafu)?;
-            Ok((
-                to_path.clone(),
-                http_download_file(url, to_path, hash, progress, velocity, cancel_install)?,
-            ))
+            let size = http_download_file(url, to_path, hash, progress, velocity, cancel_install)?;
+            Ok(FilesType::File {
+                path: to_path.clone(),
+                total: size,
+            })
         }
         DownloadType::File(path) => {
             ensure!(
@@ -80,7 +93,26 @@ where
 
             let total = fs::metadata(path).map(|x| x.len()).unwrap_or(1) as usize;
 
-            Ok((path.to_path_buf(), total))
+            Ok(FilesType::File {
+                path: path.clone(),
+                total,
+            })
+        }
+        DownloadType::Dir(path) => {
+            ensure!(
+                path.exists(),
+                LocalFileNotFoundSnafu {
+                    path: path.to_owned()
+                }
+            );
+
+            velocity(0);
+            progress(100.0);
+
+            Ok(FilesType::Dir {
+                path: path.clone(),
+                total: fs::metadata(path).map(|x| x.len()).unwrap_or(1) as usize,
+            })
         }
     }
 }

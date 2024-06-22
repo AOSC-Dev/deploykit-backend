@@ -54,7 +54,7 @@ trait Deploykit {
 #[derive(Parser, Debug)]
 struct Args {
     /// Set URL for download source
-    #[clap(long)]
+    // #[clap(long)]
     // mirror_url: String,
     /// Set name of the default user
     #[clap(long)]
@@ -158,14 +158,20 @@ async fn main() -> Result<()> {
     let connection = Connection::system().await?;
     let proxy = DeploykitProxy::new(&connection).await?;
 
-    Dbus::set_config(&proxy, "download", &serde_json::json!({
-        "Http": {
-            "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20240414_amd64.squashfs",
-            "hash": "fe99624958e33c5b5ac71b3cf88822f343fc31814655bb3e554753a7fd0c1051",
-        }
-        // "File": "/home/saki/squashfs"
-    })
-    .to_string()).await?;
+    Dbus::set_config(
+        &proxy,
+        "download",
+        &serde_json::json!({
+            // "Http": {
+            //     "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20240414_amd64.squashfs",
+            //     "hash": "fe99624958e33c5b5ac71b3cf88822f343fc31814655bb3e554753a7fd0c1051",
+            // }
+            // "File": "/home/saki/squashfs"
+            "Dir": "/run/livekit/sysroots/base"
+        })
+        .to_string(),
+    )
+    .await?;
 
     Dbus::set_config(&proxy, "timezone", &timezone).await?;
     Dbus::set_config(&proxy, "locale", &locale).await?;
