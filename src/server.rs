@@ -73,7 +73,7 @@ impl Default for DeploykitServer {
 
                 drop(ps);
 
-                thread::sleep(Duration::from_micros(500));
+                thread::sleep(Duration::from_micros(50));
             }),
             step_tx,
             progress_tx,
