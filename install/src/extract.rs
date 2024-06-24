@@ -67,7 +67,7 @@ pub enum RsyncError {
     #[snafu(display("Failed to read stderr"))]
     ReadStderr { source: io::Error },
     #[snafu(display("Failed to parse rsync progress"))]
-    ParseProgress { source: std::num::ParseFloatError },
+    ParseProgress { source: std::num::ParseIntError },
     #[snafu(display("Failed to parse rsync velocity"))]
     ParseVelocity { source: std::num::ParseIntError },
     #[snafu(display("rsync return non-zero status: {status}"))]
@@ -121,7 +121,7 @@ where
 
     let mut stdout = BufReader::new(child.stdout.take().context(GetStderrSnafu)?);
 
-    let mut now = Instant::now();
+    let now = Instant::now();
     loop {
         if cancel_install.load(Ordering::SeqCst) {
             return Ok(());
@@ -144,16 +144,26 @@ where
             match line {
                 Ok(line) => {
                     let mut line_split = line.split_ascii_whitespace();
-                    let prog = line_split.nth(1);
-                    if let Some(prog) = prog
-                        .and_then(|x| x.strip_suffix("%"))
-                        .and_then(|x| x.parse::<f64>().ok())
+                    let prog = line_split.next_back();
+                    if let Some((uncheck, total_files)) = prog
+                        .and_then(|x| x.strip_suffix(")"))
+                        .and_then(|x| x.strip_prefix("to-chk="))
+                        .and_then(|x| x.split_once("/"))
                     {
-                        progress(prog);
+                        let uncheck = uncheck.parse::<u64>().context(ParseProgressSnafu)?;
+                        let total_files = total_files.parse::<u64>().context(ParseProgressSnafu)?;
+                        progress(
+                            (((total_files - uncheck) as f64 / total_files as f64) * 100.0) as i64
+                                as f64,
+                        );
                         let elapsed = now.elapsed().as_secs();
                         if elapsed >= 1 {
-                            velocity(((total as f64 * (prog / 100.0)) / elapsed as f64) as usize);
-                            now = Instant::now();
+                            velocity(
+                                total
+                                    * ((total_files - uncheck) as f64 / total_files as f64)
+                                        as usize
+                                    / elapsed as usize,
+                            );
                         }
                     } else {
                         warn!("rsync progress has except output: {}", line);
