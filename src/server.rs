@@ -3,8 +3,8 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
     sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc::{self, Sender},
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
+        mpsc::{self},
         Arc, Mutex,
     },
     thread::{self, JoinHandle},
@@ -38,10 +38,9 @@ use crate::error::DkError;
 pub struct DeploykitServer {
     config: InstallConfigPrepare,
     progress: Arc<Mutex<ProgressStatus>>,
-    _progress_handle: JoinHandle<()>,
-    step_tx: Sender<u8>,
-    progress_tx: Sender<f64>,
-    v_tx: Sender<usize>,
+    progress_num: Arc<AtomicU8>,
+    step: Arc<AtomicU8>,
+    v: Arc<AtomicUsize>,
     install_thread: Option<JoinHandle<()>>,
     partition_thread: Option<JoinHandle<()>>,
     cancel_run_install: Arc<AtomicBool>,
@@ -51,33 +50,16 @@ pub struct DeploykitServer {
 impl Default for DeploykitServer {
     fn default() -> Self {
         let ps = Arc::new(Mutex::new(ProgressStatus::Pending));
-        let (step_tx, step_rx) = mpsc::channel();
-        let (progress_tx, progress_rx) = mpsc::channel();
-        let (v_tx, v_rx) = mpsc::channel();
+        let progress_num = Arc::new(AtomicU8::new(0));
+        let step = Arc::new(AtomicU8::new(0));
+        let v = Arc::new(AtomicUsize::new(0));
+
         Self {
             config: InstallConfigPrepare::default(),
             progress: ps.clone(),
-            _progress_handle: thread::spawn(move || loop {
-                let mut ps = ps.lock().unwrap();
-                if let Ok(v) = step_rx.try_recv() {
-                    ps.change_step(v);
-                }
-
-                if let Ok(v) = progress_rx.try_recv() {
-                    ps.change_progress(v);
-                }
-
-                if let Ok(v) = v_rx.try_recv() {
-                    ps.change_velocity(v);
-                }
-
-                drop(ps);
-
-                thread::sleep(Duration::from_micros(50));
-            }),
-            step_tx,
-            progress_tx,
-            v_tx,
+            progress_num: progress_num.clone(),
+            step: step.clone(),
+            v: v.clone(),
             install_thread: None,
             partition_thread: None,
             cancel_run_install: Arc::new(AtomicBool::new(false)),
@@ -90,41 +72,13 @@ impl Default for DeploykitServer {
 #[serde(tag = "status")]
 pub enum ProgressStatus {
     Pending,
-    Working { step: u8, progress: f64, v: usize },
+    Working {
+        step: Arc<AtomicU8>,
+        progress: Arc<AtomicU8>,
+        v: Arc<AtomicUsize>,
+    },
     Error(DkError),
     Finish,
-}
-
-impl ProgressStatus {
-    fn change_step(&mut self, step: u8) {
-        if let ProgressStatus::Working { progress, v, .. } = self {
-            *self = ProgressStatus::Working {
-                step,
-                progress: *progress,
-                v: *v,
-            }
-        }
-    }
-
-    fn change_progress(&mut self, progress: f64) {
-        if let ProgressStatus::Working { step, v, .. } = self {
-            *self = ProgressStatus::Working {
-                step: *step,
-                progress,
-                v: *v,
-            }
-        }
-    }
-
-    fn change_velocity(&mut self, velocity: usize) {
-        if let ProgressStatus::Working { step, progress, .. } = self {
-            *self = ProgressStatus::Working {
-                step: *step,
-                progress: *progress,
-                v: velocity,
-            }
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -354,9 +308,9 @@ impl DeploykitServer {
 
         match start_install_inner(
             self.config.clone(),
-            self.step_tx.clone(),
-            self.progress_tx.clone(),
-            self.v_tx.clone(),
+            self.step.clone(),
+            self.progress_num.clone(),
+            self.v.clone(),
             self.progress.clone(),
             self.cancel_run_install.clone(),
         ) {
@@ -367,9 +321,9 @@ impl DeploykitServer {
         {
             let mut ps = self.progress.lock().unwrap();
             *ps = ProgressStatus::Working {
-                step: 0,
-                progress: 0.0,
-                v: 0,
+                step: self.step.clone(),
+                progress: self.progress_num.clone(),
+                v: self.v.clone(),
             };
         }
 
@@ -650,9 +604,9 @@ fn set_config_inner(
 
 fn start_install_inner(
     config: InstallConfigPrepare,
-    step_tx: Sender<u8>,
-    progress_tx: Sender<f64>,
-    v_tx: Sender<usize>,
+    step: Arc<AtomicU8>,
+    progress: Arc<AtomicU8>,
+    v: Arc<AtomicUsize>,
     ps: Arc<Mutex<ProgressStatus>>,
     cancel_install: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, DkError> {
@@ -705,14 +659,10 @@ fn start_install_inner(
         let install_thread = thread::spawn(move || {
             let res = config
                 .start_install(
-                    |step| {
-                        step_tx.send(step).unwrap();
-                    },
-                    move |progress| {
-                        progress_tx.send(progress).unwrap();
-                    },
-                    move |v| v_tx.send(v).unwrap(),
-                    t,
+                    step.clone(),
+                    progress.clone(),
+                    v.clone(),
+                    t.clone(),
                     cancel_install_clone,
                 )
                 .map_err(|e| DkError::from(&e));

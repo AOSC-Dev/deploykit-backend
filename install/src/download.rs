@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use std::{fs, thread};
@@ -61,20 +61,23 @@ pub struct OverlayEntry {
     pub percent: f32,
 }
 
-pub(crate) fn download_file<F, F2>(
+pub(crate) fn download_file(
     download_type: &DownloadType,
-    progress: Arc<F>,
-    velocity: Arc<F2>,
+    progress: Arc<AtomicU8>,
+    velocity: Arc<AtomicUsize>,
     cancel_install: Arc<AtomicBool>,
-) -> Result<FilesType, DownloadError>
-where
-    F: Fn(f64) + Sync + Send + 'static,
-    F2: Fn(usize) + Send + Sync + 'static,
-{
+) -> Result<FilesType, DownloadError> {
     match download_type {
         DownloadType::Http { url, hash, to_path } => {
             let to_path = to_path.as_ref().context(DownloadPathIsNotSetSnafu)?;
-            let size = http_download_file(url, to_path, hash, progress, velocity, cancel_install)?;
+            let size = http_download_file(
+                url,
+                to_path,
+                hash,
+                progress.clone(),
+                velocity.clone(),
+                cancel_install,
+            )?;
             Ok(FilesType::File {
                 path: to_path.clone(),
                 total: size,
@@ -88,8 +91,8 @@ where
                 }
             );
 
-            velocity(0);
-            progress(100.0);
+            velocity.store(0, Ordering::SeqCst);
+            progress.store(100, Ordering::SeqCst);
 
             let total = fs::metadata(path).map(|x| x.len()).unwrap_or(1) as usize;
 
@@ -106,8 +109,8 @@ where
                 }
             );
 
-            velocity(0);
-            progress(100.0);
+            velocity.store(0, Ordering::SeqCst);
+            progress.store(100, Ordering::SeqCst);
 
             Ok(FilesType::Dir {
                 path: path.clone(),
@@ -117,18 +120,14 @@ where
     }
 }
 
-fn http_download_file<F, F2>(
+fn http_download_file(
     url: &str,
     path: &Path,
     hash: &str,
-    progress: Arc<F>,
-    velocity: Arc<F2>,
+    progress: Arc<AtomicU8>,
+    velocity: Arc<AtomicUsize>,
     cancel_install: Arc<AtomicBool>,
-) -> Result<usize, DownloadError>
-where
-    F: Fn(f64) + Sync + Send + 'static,
-    F2: Fn(usize) + Send + Sync + 'static,
-{
+) -> Result<usize, DownloadError> {
     let url = url.to_string();
     let hash = hash.to_string();
     let path = path.to_path_buf();
@@ -146,18 +145,14 @@ where
     .unwrap()
 }
 
-async fn http_download_file_inner<F, F2>(
+async fn http_download_file_inner(
     url: String,
     path: PathBuf,
     hash: String,
-    progress: Arc<F>,
-    velocity: Arc<F2>,
+    progress: Arc<AtomicU8>,
+    velocity: Arc<AtomicUsize>,
     cancel_install: Arc<AtomicBool>,
-) -> Result<usize, DownloadError>
-where
-    F: Fn(f64) + Sync + Send,
-    F2: Fn(usize) + Send + Sync,
-{
+) -> Result<usize, DownloadError> {
     let client = Client::builder()
         .user_agent("deploykit")
         .build()
@@ -204,7 +199,7 @@ where
     {
         if now.elapsed().as_secs() >= 1 {
             now = Instant::now();
-            velocity(v_download_len / 1024);
+            velocity.store(v_download_len / 1024, Ordering::SeqCst);
             v_download_len = 0;
         }
 
@@ -216,7 +211,11 @@ where
             .await
             .context(WriteFileSnafu { path: path.clone() })?;
 
-        progress((download_len as f64 / total_size as f64 * 100.0).round());
+        progress.store(
+            (download_len as f64 / total_size as f64 * 100.0).round() as u8,
+            Ordering::SeqCst,
+        );
+
         v_download_len += chunk.len();
         download_len += chunk.len();
     }

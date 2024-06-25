@@ -3,7 +3,7 @@ use std::{
     path::Path,
     process::{Command, Stdio},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
         Arc,
     },
     time::Instant,
@@ -16,17 +16,15 @@ use tracing::{error, warn};
 use crate::utils::RunCmdError;
 
 /// Extract the .squashfs and callback download progress
-pub(crate) fn extract_squashfs<F, F2, P>(
+pub(crate) fn extract_squashfs<P>(
     file_size: f64,
     archive: P,
     path: P,
-    progress: F,
-    velocity: F2,
+    progress: Arc<AtomicU8>,
+    velocity: Arc<AtomicUsize>,
     cancel_install: Arc<AtomicBool>,
 ) -> Result<(), io::Error>
 where
-    F: Fn(f64),
-    F2: Fn(usize),
     P: AsRef<Path>,
 {
     let mut sys = System::new_all();
@@ -46,10 +44,13 @@ where
             let elapsed = now.elapsed().as_secs();
             if elapsed >= 1 {
                 now = Instant::now();
-                velocity(((v_download_len / 1024.0) / elapsed as f64) as usize);
+                velocity.store(
+                    ((v_download_len / 1024.0) / elapsed as f64) as usize,
+                    Ordering::SeqCst,
+                );
                 v_download_len = 0.0;
             }
-            progress(count as f64);
+            progress.store(count as u8, Ordering::SeqCst);
             v_download_len += file_size * count as f64 / 100.0;
         },
         cancel_install,
@@ -74,18 +75,14 @@ pub enum RsyncError {
     RsyncFailed { status: i32 },
 }
 
-pub(crate) fn rsync_system<F, F2>(
-    progress: F,
-    velocity: F2,
+pub(crate) fn rsync_system(
+    progress: Arc<AtomicU8>,
+    velocity: Arc<AtomicUsize>,
     from: &Path,
     to: &Path,
     cancel_install: Arc<AtomicBool>,
     total: usize,
-) -> Result<(), RsyncError>
-where
-    F: Fn(f64),
-    F2: Fn(usize),
-{
+) -> Result<(), RsyncError> {
     let mut from = from.to_string_lossy().to_string();
     let mut to = to.to_string_lossy().to_string();
 
@@ -152,17 +149,18 @@ where
                     {
                         let uncheck = uncheck.parse::<u64>().context(ParseProgressSnafu)?;
                         let total_files = total_files.parse::<u64>().context(ParseProgressSnafu)?;
-                        progress(
-                            (((total_files - uncheck) as f64 / total_files as f64) * 100.0) as i64
-                                as f64,
+                        progress.store(
+                            (((total_files - uncheck) as f64 / total_files as f64) * 100.0) as u8,
+                            Ordering::SeqCst,
                         );
                         let elapsed = now.elapsed().as_secs();
                         if elapsed >= 1 {
-                            velocity(
+                            velocity.store(
                                 total
                                     * ((total_files - uncheck) as f64 / total_files as f64)
                                         as usize
                                     / elapsed as usize,
+                                Ordering::SeqCst,
                             );
                         }
                     } else {
