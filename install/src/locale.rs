@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{self, Read, Write},
+    io::{self, BufRead, BufReader, Read, Write},
 };
 
 use snafu::{ResultExt, Snafu};
@@ -30,18 +30,16 @@ pub(crate) fn set_locale(locale: &str) -> Result<(), io::Error> {
 /// Must be used in a chroot context
 pub(crate) fn set_hwclock_tc(utc: bool) -> Result<(), SetHwclockError> {
     let adjtime_file = std::fs::File::open("/etc/adjtime");
-    let status_is_rtc = if let Ok(mut adjtime_file) = adjtime_file {
-        let mut buf = String::new();
-
-        adjtime_file
-            .read_to_string(&mut buf)
+    let status_is_rtc = if let Ok(adjtime_file) = adjtime_file {
+        let lines = BufReader::new(adjtime_file)
+            .lines()
+            .collect::<Result<Vec<_>, io::Error>>()
             .context(OperateAdjtimeFileSnafu)?;
 
-        let line: Vec<&str> = buf.split('\n').collect();
-        if line.len() < 3 || line.get(2) == Some(&"UTC") {
+        if lines.len() < 3 || lines.get(2).map(|x| x == "UTC").unwrap_or(false) {
             false
         } else {
-            line[2] == "LOCAL"
+            lines[2] == "LOCAL"
         }
     } else {
         false
