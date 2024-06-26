@@ -132,14 +132,13 @@ fn http_download_file(
     let hash = hash.to_string();
     let path = path.to_path_buf();
     thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .unwrap();
-
-        runtime.block_on(async move {
-            http_download_file_inner(url, path, hash, progress, velocity, cancel_install).await
-        })
+            .unwrap()
+            .block_on(async move {
+                http_download_file_inner(url, path, hash, progress, velocity, cancel_install).await
+            })
     })
     .join()
     .unwrap()

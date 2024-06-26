@@ -33,7 +33,7 @@ pub(crate) fn set_hwclock_tc(utc: bool) -> Result<(), SetHwclockError> {
     let status_is_rtc = if let Ok(adjtime_file) = adjtime_file {
         let lines = BufReader::new(adjtime_file)
             .lines()
-            .collect::<Result<Vec<_>, io::Error>>()
+            .collect::<io::Result<Vec<_>>>()
             .context(OperateAdjtimeFileSnafu)?;
 
         if lines.len() < 3 || lines.get(2).map(|x| x == "UTC").unwrap_or(false) {

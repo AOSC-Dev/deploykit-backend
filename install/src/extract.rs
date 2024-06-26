@@ -143,9 +143,9 @@ pub(crate) fn rsync_system(
                     let mut line_split = line.split_ascii_whitespace();
                     let prog = line_split.next_back();
                     if let Some((uncheck, total_files)) = prog
-                        .and_then(|x| x.strip_suffix(")"))
+                        .and_then(|x| x.strip_suffix(')'))
                         .and_then(|x| x.strip_prefix("to-chk="))
-                        .and_then(|x| x.split_once("/"))
+                        .and_then(|x| x.split_once('/'))
                     {
                         let uncheck = uncheck.parse::<u64>().context(ParseProgressSnafu)?;
                         let total_files = total_files.parse::<u64>().context(ParseProgressSnafu)?;

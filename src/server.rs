@@ -6,7 +6,8 @@ use std::{
         atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
         Arc, Mutex,
     },
-    thread::{self, JoinHandle}, time::Duration,
+    thread::{self, JoinHandle},
+    time::Duration,
 };
 
 use disk::{
@@ -667,7 +668,7 @@ fn start_install_inner(
             if let Err(e) = res {
                 {
                     let mut ps = ps_clone.lock().unwrap();
-                    *ps = ProgressStatus::Error(e); 
+                    *ps = ProgressStatus::Error(e);
                 }
             }
         });
