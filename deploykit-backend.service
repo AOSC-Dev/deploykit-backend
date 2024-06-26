@@ -3,7 +3,7 @@ Description=AOSC OS Installer (DeployKit) Backend
 
 [Service]
 Type=dbus
-BusName=io.aosc.Deploykit1
+BusName=io.aosc.Deploykit
 ExecStart=/usr/bin/deploykit-backend
 
 [Install]
