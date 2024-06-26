@@ -4,11 +4,9 @@ use std::{
     process::exit,
     sync::{
         atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
-        mpsc::{self},
         Arc, Mutex,
     },
-    thread::{self, JoinHandle},
-    time::Duration,
+    thread::{self, JoinHandle}, time::Duration,
 };
 
 use disk::{
@@ -653,7 +651,6 @@ fn start_install_inner(
     let cancel_install_clone = cancel_install.clone();
 
     let t = thread::spawn(move || {
-        let (tx, rx) = mpsc::channel();
         let t = tmp_dir_clone2.clone();
         let t2 = tmp_dir_clone2.clone();
         let install_thread = thread::spawn(move || {
@@ -669,10 +666,8 @@ fn start_install_inner(
 
             if let Err(e) = res {
                 {
-                    let ps = ps_clone.lock().unwrap();
-                    if let ProgressStatus::Working { .. } = *ps {
-                        tx.send(e).expect("Install thread is exit.");
-                    }
+                    let mut ps = ps_clone.lock().unwrap();
+                    *ps = ProgressStatus::Error(e); 
                 }
             }
         });
@@ -698,9 +693,8 @@ fn start_install_inner(
 
                 let mut ps = ps.lock().unwrap();
 
-                if let Ok(e) = rx.recv_timeout(Duration::from_millis(10)) {
+                if let ProgressStatus::Error(e) = &*ps {
                     error!("Failed to install system: {e:?}");
-                    *ps = ProgressStatus::Error(e);
                     exit_env(root_fd, t2);
                     return;
                 }
@@ -708,6 +702,8 @@ fn start_install_inner(
                 *ps = ProgressStatus::Finish;
                 return;
             }
+
+            thread::sleep(Duration::from_millis(10));
         }
     });
 
