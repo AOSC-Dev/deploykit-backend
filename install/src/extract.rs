@@ -63,10 +63,10 @@ where
 pub enum RsyncError {
     #[snafu(transparent)]
     RunCmdError { source: RunCmdError },
-    #[snafu(display("Failed to get stderr"))]
-    GetStderr,
-    #[snafu(display("Failed to read stderr"))]
-    ReadStderr { source: io::Error },
+    #[snafu(display("Failed to get stdout"))]
+    GetStdout,
+    #[snafu(display("Failed to read stdout"))]
+    ReadStdout { source: io::Error },
     #[snafu(display("Failed to parse rsync progress"))]
     ParseProgress { source: std::num::ParseIntError },
     #[snafu(display("Failed to parse rsync velocity"))]
@@ -116,7 +116,7 @@ pub(crate) fn rsync_system(
             source: e,
         })?;
 
-    let mut stdout = BufReader::new(child.stdout.take().context(GetStderrSnafu)?);
+    let mut stdout = BufReader::new(child.stdout.take().context(GetStdoutSnafu)?);
 
     let now = Instant::now();
     loop {
@@ -125,7 +125,7 @@ pub(crate) fn rsync_system(
         }
 
         let length = {
-            let buffer = stdout.fill_buf().context(ReadStderrSnafu)?;
+            let buffer = stdout.fill_buf().context(ReadStdoutSnafu)?;
 
             let line_size = buffer
                 .iter()
