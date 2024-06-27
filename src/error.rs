@@ -124,9 +124,9 @@ impl From<&InstallSquashfsError> for DkError {
                     })
                 },
             },
-            InstallSquashfsError::RsyncError { source } => Self {
+            InstallSquashfsError::CopyError { source } => Self {
                 message: value.to_string(),
-                t: "RsyncError".to_string(),
+                t: "CopyError".to_string(),
                 data: {
                     json!({
                         "stage": 3,
