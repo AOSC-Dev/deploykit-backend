@@ -20,7 +20,7 @@ use disk::{
 };
 
 use download::{download_file, DownloadError, FilesType};
-use extract::{copy_system, extract_squashfs, CopyError};
+use extract::{extract_squashfs, rsync_system, RsyncError};
 use genfstab::{genfstab_to_file, GenfstabError};
 use grub::RunGrubError;
 use locale::SetHwclockError;
@@ -184,7 +184,7 @@ pub enum InstallSquashfsError {
     #[snafu(display("Failed to remove downloaded squashfs file"))]
     RemoveDownloadedFile { source: std::io::Error },
     #[snafu(transparent)]
-    CopyError { source: CopyError },
+    RsyncError { source: RsyncError },
 }
 
 #[derive(Debug)]
@@ -715,7 +715,7 @@ impl InstallConfig {
             FilesType::Dir { path, total } => {
                 cancel_install_exit!(cancel_install);
 
-                copy_system(
+                rsync_system(
                     progress,
                     velocity.clone(),
                     &path,

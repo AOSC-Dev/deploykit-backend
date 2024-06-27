@@ -1,22 +1,19 @@
 use std::{
-    io::{self},
+    io::{self, BufRead, BufReader},
     path::Path,
+    process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
         Arc,
     },
-    thread,
     time::Instant,
 };
 
-use libxcp::{
-    config::Config,
-    drivers::{load_driver, Drivers},
-    feedback::{ChannelUpdater, StatusUpdate, StatusUpdater},
-};
-use snafu::Snafu;
+use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use sysinfo::System;
-use tracing::debug;
+use tracing::{error, warn};
+
+use crate::utils::RunCmdError;
 
 /// Extract the .squashfs and callback download progress
 pub(crate) fn extract_squashfs<P>(
@@ -63,76 +60,151 @@ where
 }
 
 #[derive(Debug, Snafu)]
-pub enum CopyError {
-    #[snafu(display("Failed to load driver"))]
-    LoadDriver { e: String },
-    #[snafu(display("Failed to during copy operation"))]
-    Copy,
-    #[snafu(display("Failed to copy file"))]
-    XcpError { e: String },
+pub enum RsyncError {
+    #[snafu(transparent)]
+    RunCmdError { source: RunCmdError },
+    #[snafu(display("Failed to get stdout"))]
+    GetStdout,
+    #[snafu(display("Failed to read stdout"))]
+    ReadStdout { source: io::Error },
+    #[snafu(display("Failed to parse rsync progress"))]
+    ParseProgress { source: std::num::ParseIntError },
+    #[snafu(display("Failed to parse rsync velocity"))]
+    ParseVelocity { source: std::num::ParseIntError },
+    #[snafu(display("rsync return non-zero status: {status}"))]
+    RsyncFailed { status: i32 },
 }
 
-pub(crate) fn copy_system(
+pub(crate) fn rsync_system(
     progress: Arc<AtomicU8>,
     velocity: Arc<AtomicUsize>,
     from: &Path,
     to: &Path,
     cancel_install: Arc<AtomicBool>,
     total: usize,
-) -> Result<(), CopyError> {
-    let sources = vec![from.to_path_buf()];
-    let mut config = Config::default();
-    config.no_target_directory = true;
-    config.fsync = true;
-    let config = Arc::new(config);
+) -> Result<(), RsyncError> {
+    let mut from = from.to_string_lossy().to_string();
+    let mut to = to.to_string_lossy().to_string();
 
-    let updater = ChannelUpdater::new(&config);
-    // The ChannelUpdater is consumed by the driver (so it is properly closed
-    // on completion). Retrieve our end of the connection before then.
-    let stat_rx = updater.rx_channel();
-    let stats: Arc<dyn StatusUpdater> = Arc::new(updater);
-
-    let driver = load_driver(Drivers::ParFile, &config)
-        .map_err(|e| CopyError::LoadDriver { e: e.to_string() })?;
-
-    // As we want realtime updates via the ChannelUpdater the
-    // copy operation should run in the background.
-    let to = to.to_path_buf();
-    let handle = thread::spawn(move || driver.copy(sources, &to, stats));
-
-    // Gather the results as we go; our end of the channel has been
-    // moved to the driver call and will end when drained.
-    let mut timer = Instant::now();
-    let mut size_v = 0;
-    for stat in stat_rx {
-        if cancel_install.load(Ordering::Relaxed) {
-            return Ok(());
-        }
-        match stat {
-            StatusUpdate::Copied(v) => {
-                let progress_percent = (v as f64 / total as f64) * 100.0;
-                progress.store(progress_percent as u8, Ordering::SeqCst);
-                debug!("Copied {} bytes", v);
-            }
-            StatusUpdate::Size(v) => {
-                size_v += v;
-                if timer.elapsed().as_secs() > 1 {
-                    velocity.store(((size_v as f64 / 1024.0) / 1.0) as usize, Ordering::SeqCst);
-                    size_v = 0;
-                    timer = Instant::now();
-                }
-                debug!("Size update: {}", v);
-            }
-            StatusUpdate::Error(e) => {
-                panic!("Error during copy: {}", e);
-            }
+    for i in [&mut from, &mut to] {
+        if !i.ends_with('/') {
+            *i += "/";
         }
     }
 
-    handle
-        .join()
-        .map_err(|_| CopyError::Copy)?
-        .map_err(|e| CopyError::XcpError { e: e.to_string() })?;
+    let mut child = Command::new("rsync")
+        .arg("-a")
+        .arg("-x")
+        .arg("-H")
+        .arg("-A")
+        .arg("-X")
+        .arg("-S")
+        .arg("-W")
+        .arg("--numeric-ids")
+        .arg("--info=progress2")
+        .arg("--no-i-r")
+        .arg(&from)
+        .arg(&to)
+        .stdout(Stdio::piped())
+        .env("LANG", "C.UTF-8")
+        .spawn()
+        .map_err(|e| RunCmdError::Exec {
+            cmd: format!(
+                "rsync -a -H -A -X -S -W --numeric-ids --info=progress2 --no-i-r {} {}",
+                from, to
+            ),
+            source: e,
+        })?;
+
+    let mut stdout = BufReader::new(child.stdout.take().context(GetStdoutSnafu)?);
+
+    let now = Instant::now();
+    loop {
+        if cancel_install.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+
+        let length = {
+            let buffer = stdout.fill_buf().context(ReadStdoutSnafu)?;
+
+            let line_size = buffer
+                .iter()
+                .take_while(|c| **c != b'\n' || **c != b'\r')
+                .count();
+
+            if line_size == 0 {
+                break;
+            }
+
+            let line = std::str::from_utf8(&buffer[..line_size]);
+
+            match line {
+                Ok(line) => {
+                    let mut line_split = line.split_ascii_whitespace();
+                    let prog = line_split.next_back();
+                    if let Some((uncheck, total_files)) = prog
+                        .and_then(|x| x.strip_suffix(')'))
+                        .and_then(|x| x.strip_prefix("to-chk="))
+                        .and_then(|x| x.split_once('/'))
+                    {
+                        let uncheck = uncheck.parse::<u64>().context(ParseProgressSnafu)?;
+                        let total_files = total_files.parse::<u64>().context(ParseProgressSnafu)?;
+                        progress.store(
+                            (((total_files - uncheck) as f64 / total_files as f64) * 100.0) as u8,
+                            Ordering::SeqCst,
+                        );
+                        let elapsed = now.elapsed().as_secs();
+                        if elapsed >= 1 {
+                            velocity.store(
+                                total
+                                    * ((total_files - uncheck) as f64 / total_files as f64)
+                                        as usize
+                                    / elapsed as usize,
+                                Ordering::SeqCst,
+                            );
+                        }
+                    } else {
+                        warn!("rsync progress has except output: {}", line);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to parse rsync progress: {}", e);
+                }
+            }
+
+            line_size
+                + if line_size < buffer.len() {
+                    // we found a delimiter
+                    if line_size + 1 < buffer.len() // we look if we found two delimiter
+                && buffer[line_size] == b'\r'
+                && buffer[line_size + 1] == b'\n'
+                    {
+                        2
+                    } else {
+                        1
+                    }
+                } else {
+                    0
+                }
+        };
+
+        stdout.consume(length);
+    }
+
+    let rsync_finish = child.wait().map_err(|e| RunCmdError::Exec {
+        cmd: format!(
+            "rsync -a -H -A -X -S -W --info=progress2 --numeric-ids --no-i-r {} {}",
+            from, to
+        ),
+        source: e,
+    })?;
+
+    ensure!(
+        rsync_finish.success(),
+        RsyncFailedSnafu {
+            status: rsync_finish.code().unwrap_or(1)
+        }
+    );
 
     Ok(())
 }
