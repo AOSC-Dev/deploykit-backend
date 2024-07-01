@@ -17,6 +17,7 @@ tempfile = "3.9"
 ctrlc = { version = "3.4", features = ["termination"] }
 sysinfo = "0.30"
 rustix = { version = "0.38", features = ["process"] }
+logind-zbus = "4.0.3"
 
 disk = { path = "./disk" }
 install = { path = "./install" }

@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
     info!("Deploykit version: {}", env!("VERGEN_GIT_DESCRIBE"));
 
     let conn = Connection::system().await?;
-    take_wake_lock(&conn).await?;
+    let fds = take_wake_lock(&conn).await?;
 
     let deploykit_server = DeploykitServer::default();
 
@@ -43,6 +43,8 @@ async fn main() -> Result<()> {
 
     debug!("zbus session created");
     pending::<()>().await;
+
+    drop(fds);
 
     Ok(())
 }
