@@ -121,6 +121,7 @@ pub(crate) fn rsync_system(
     let now = Instant::now();
     loop {
         if cancel_install.load(Ordering::SeqCst) {
+            child.kill().ok();
             return Ok(());
         }
 
