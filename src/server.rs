@@ -23,7 +23,8 @@ use install::{
     chroot::{escape_chroot, get_dir_fd},
     mount::{remove_files_mounts, sync_disk, umount_root_path},
     swap::{get_recommend_swap_size, swapoff},
-    sync_and_reboot, DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User,
+    sync_and_reboot, umount_all, DownloadType, InstallConfig, InstallConfigPrepare, InstallErr,
+    SwapFile, User,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -723,9 +724,28 @@ fn exit_env(root_fd: OwnedFd, tmp_dir: Arc<PathBuf>) {
 
     let efi_path = tmp_dir.join("efi");
     if is_efi_booted() {
-        umount_root_path(&efi_path).ok();
+        sync_disk();
+        for _ in 0..3 {
+            if umount_root_path(&efi_path).is_ok() {
+                break;
+            }
+            thread::sleep(Duration::from_secs(5));
+        }
     }
 
-    sync_disk();
-    umount_root_path(&tmp_dir).ok();
+    let mut res = Ok(());
+    for _ in 0..3 {
+        sync_disk();
+        res = umount_root_path(&tmp_dir);
+
+        if res.is_ok() {
+            break;
+        }
+
+        thread::sleep(Duration::from_secs(5));
+    }
+
+    if res.is_err() {
+        umount_all(&tmp_dir);
+    }
 }

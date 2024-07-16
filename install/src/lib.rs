@@ -542,26 +542,7 @@ impl InstallConfig {
                             || matches!(stage, InstallationStage::UmountEFIPath)
                             || matches!(stage, InstallationStage::UmountInnerPath)
                         {
-                            debug!(
-                                "Try to use umount -R {} to umount",
-                                tmp_mount_path.display()
-                            );
-                            if let Ok(out) = Command::new("umount")
-                                .arg("-R")
-                                .arg(&*tmp_mount_path)
-                                .output()
-                            {
-                                debug!(
-                                    "umount -R {} stdout: {}",
-                                    tmp_mount_path.display(),
-                                    String::from_utf8_lossy(&out.stdout)
-                                );
-                                debug!(
-                                    "umount -R {} stderr: {}",
-                                    tmp_mount_path.display(),
-                                    String::from_utf8_lossy(&out.stderr)
-                                );
-                            }
+                            umount_all(&tmp_mount_path);
 
                             return Ok(true);
                         }
@@ -1008,6 +989,29 @@ pub fn sync_and_reboot() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+pub fn umount_all(tmp_mount_path: &Path) {
+    debug!(
+        "Try to use umount -R {} to umount",
+        tmp_mount_path.display()
+    );
+    if let Ok(out) = Command::new("umount")
+        .arg("-R")
+        .arg(tmp_mount_path)
+        .output()
+    {
+        debug!(
+            "umount -R {} stdout: {}",
+            tmp_mount_path.display(),
+            String::from_utf8_lossy(&out.stdout)
+        );
+        debug!(
+            "umount -R {} stderr: {}",
+            tmp_mount_path.display(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
 }
 
 fn sysrq_reboot() -> io::Result<()> {
