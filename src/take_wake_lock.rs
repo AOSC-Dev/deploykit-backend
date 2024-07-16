@@ -3,14 +3,19 @@ use logind_zbus::manager::{InhibitType, ManagerProxy};
 use tracing::info;
 use zbus::{zvariant::OwnedFd, Connection};
 
-pub async fn take_wake_lock(conn: &Connection) -> Result<OwnedFd> {
+pub async fn take_wake_lock(conn: &Connection) -> Result<Vec<OwnedFd>> {
     let proxy = ManagerProxy::new(conn).await?;
 
-    let fd = proxy
-        .inhibit(InhibitType::Sleep, "Deploykit", "Deploykit Installing system", "block")
-        .await?;
+    let mut fds = vec![];
+    for i in [InhibitType::Sleep, InhibitType::Idle] {
+        let fd = proxy
+            .inhibit(i, "Deploykit", "Deploykit Installing system", "block")
+            .await?;
 
-    info!("take wake lock: {:?}", fd);
+        fds.push(fd);
+    }
 
-    Ok(fd)
+    info!("take wake lock: {:?}", fds);
+
+    Ok(fds)
 }
