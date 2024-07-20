@@ -228,7 +228,10 @@ impl DeploykitServer {
     }
 
     fn get_all_esp_partitions(&self) -> String {
-        Message::ok(&all_esp_partitions())
+        match all_esp_partitions() {
+            Ok(res) => Message::ok(&res),
+            Err(e) => Message::err(e),
+        }
     }
 
     fn auto_partition(&mut self, dev: &str) -> String {
