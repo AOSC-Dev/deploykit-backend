@@ -21,3 +21,7 @@ faster-hex = "0.9"
 serde_json = "1.0.111"
 num_enum = "0.7.2"
 snafu = "0.8.2"
+
+[features]
+default = []
+is_retro = []
