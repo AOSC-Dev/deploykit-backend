@@ -1,5 +1,5 @@
 use std::{
-    io::{self, BufRead, BufReader},
+    io::{self, BufRead, BufReader, Read},
     path::Path,
     process::{Command, Stdio},
     sync::{
@@ -72,7 +72,7 @@ pub enum RsyncError {
     #[snafu(display("Failed to parse rsync velocity"))]
     ParseVelocity { source: std::num::ParseIntError },
     #[snafu(display("rsync return non-zero status: {status}"))]
-    RsyncFailed { status: i32 },
+    RsyncFailed { status: i32, stderr: String },
 }
 
 pub(crate) fn rsync_system(
@@ -106,6 +106,7 @@ pub(crate) fn rsync_system(
         .arg(&from)
         .arg(&to)
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .env("LANG", "C.UTF-8")
         .spawn()
         .map_err(|e| RunCmdError::Exec {
@@ -117,6 +118,7 @@ pub(crate) fn rsync_system(
         })?;
 
     let mut stdout = BufReader::new(child.stdout.take().context(GetStdoutSnafu)?);
+    let mut stderr = BufReader::new(child.stdout.take().context(GetStdoutSnafu)?);
 
     let now = Instant::now();
     loop {
@@ -200,12 +202,14 @@ pub(crate) fn rsync_system(
         source: e,
     })?;
 
-    ensure!(
-        rsync_finish.success(),
+    ensure!(rsync_finish.success(), {
+        let mut s = String::new();
+        stderr.read_to_string(&mut s).context(ReadStdoutSnafu)?;
         RsyncFailedSnafu {
-            status: rsync_finish.code().unwrap_or(1)
+            status: rsync_finish.code().unwrap_or(1),
+            stderr: s,
         }
-    );
+    });
 
     Ok(())
 }
