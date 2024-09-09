@@ -480,7 +480,7 @@ impl InstallConfig {
                         &tmp_mount_path,
                         &cancel_install,
                         // 若能进行到这一步，则 squashfs_total_size 一定有值，故 unwrap 安全
-                        files_type.clone().unwrap(),
+                        files_type.as_ref().unwrap(),
                     )
                     .context(ExtractSquashfsSnafu),
                 InstallationStage::GenerateFstab => self
@@ -659,7 +659,7 @@ impl InstallConfig {
         velocity: Arc<AtomicUsize>,
         tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
-        files_type: FilesType,
+        files_type: &FilesType,
     ) -> Result<bool, InstallSquashfsError> {
         progress.store(0, Ordering::SeqCst);
 
@@ -671,7 +671,7 @@ impl InstallConfig {
                 total: total_size,
             } => {
                 extract_squashfs(
-                    total_size as f64,
+                    *total_size as f64,
                     squashfs_path.clone(),
                     tmp_mount_path.to_path_buf(),
                     progress,
@@ -702,7 +702,7 @@ impl InstallConfig {
                     &path,
                     tmp_mount_path,
                     cancel_install.clone(),
-                    total,
+                    *total,
                 )?;
 
                 cancel_install_exit!(cancel_install);
