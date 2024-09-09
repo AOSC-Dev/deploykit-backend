@@ -49,6 +49,7 @@ pub enum DownloadError {
     },
 }
 
+#[derive(Clone)]
 pub enum FilesType {
     File { path: PathBuf, total: usize },
     Dir { path: PathBuf, total: usize },

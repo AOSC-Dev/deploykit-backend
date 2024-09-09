@@ -480,7 +480,7 @@ impl InstallConfig {
                         &tmp_mount_path,
                         &cancel_install,
                         // 若能进行到这一步，则 squashfs_total_size 一定有值，故 unwrap 安全
-                        files_type.take().unwrap(),
+                        files_type.clone().unwrap(),
                     )
                     .context(ExtractSquashfsSnafu),
                 InstallationStage::GenerateFstab => self
