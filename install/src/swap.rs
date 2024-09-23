@@ -11,6 +11,8 @@ use tracing::info;
 
 use crate::utils::{run_command, RunCmdError};
 
+const MAX_MEMORY: f64 = 32.0;
+
 #[derive(Debug, Snafu)]
 pub enum SwapFileError {
     #[snafu(display("Failed to create swap file: {}", path.display()))]
@@ -38,20 +40,18 @@ pub enum SwapFileError {
 }
 
 pub fn get_recommend_swap_size(mem: u64) -> f64 {
-    // 1073741824 is 1 * 1024 * 1024 * 1024 (1GiB => 1iB)
-    let max: f64 = 32.0 * 1073741824.0;
-    let res = match mem {
-        ..=1073741824 => (mem * 2) as f64,
-        1073741825.. => {
-            let x = mem as f64;
-            x + x.sqrt().round()
-        }
+    let mem: f64 = mem as f64 / 1024.0 / 1024.0 / 1024.0;
+
+    let res = if mem <= 1.0 {
+        mem * 2.0
+    } else {
+        mem + mem.sqrt().round()
     };
 
-    if res > max {
-        max
+    if res >= MAX_MEMORY {
+        MAX_MEMORY * 1024.0_f32.powi(3) as f64
     } else {
-        res
+        res * 1024.0_f32.powi(3) as f64
     }
 }
 
