@@ -17,14 +17,20 @@ mod take_wake_lock;
 async fn main() -> Result<()> {
     let env_log = EnvFilter::try_from_default_env();
 
+    // 按天数来划分文件
+    let file_appender = tracing_appender::rolling::daily("/tmp", "dk.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
     if let Ok(filter) = env_log {
         tracing_subscriber::registry()
             .with(fmt::layer().with_filter(filter))
+            .with(fmt::layer().with_writer(non_blocking))
             .init();
     } else {
         tracing_subscriber::registry()
             .with(fmt::layer())
             .with(LevelFilter::DEBUG)
+            .with(fmt::layer().with_writer(non_blocking))
             .init();
     }
 

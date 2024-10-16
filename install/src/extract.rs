@@ -11,7 +11,7 @@ use std::{
 
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use sysinfo::System;
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 use crate::utils::RunCmdError;
 
@@ -141,6 +141,7 @@ pub(crate) fn rsync_system(
 
             match line {
                 Ok(line) => {
+                    debug!("rsync output: {line}");
                     let mut line_split = line.split_ascii_whitespace();
                     let prog = line_split.next_back();
                     if let Some((uncheck, total_files)) = prog
