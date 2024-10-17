@@ -6,21 +6,21 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sysinfo = "0.30"
-unsquashfs-wrapper = "0.2"
-rustix = { version = "0.38", features = ["process", "fs", "mount", "system"] }
-tracing = "0.1"
+sysinfo = "0.32.0"
+unsquashfs-wrapper = "0.2.1"
+rustix = { version = "0.38.37", features = ["process", "fs", "mount", "system"] }
+tracing = "0.1.40"
 disk = { path = "../disk" }
-libc = "0.2"
-fstab-generate = "0.1"
-reqwest = "0.12"
-tokio = { version = "1.35", features = ["rt-multi-thread", "fs"] }
-sha2 = "0.10"
-serde = { version = "1.0", features = ["derive", "rc"] }
-faster-hex = "0.9"
-serde_json = "1.0.111"
-num_enum = "0.7.2"
-snafu = "0.8.2"
+libc = "0.2.159"
+fstab-generate = "0.1.2"
+reqwest = "0.12.8"
+tokio = { version = "1.40.0", features = ["rt-multi-thread", "fs"] }
+sha2 = "0.10.8"
+serde = { version = "1.0.210", features = ["derive", "rc"] }
+faster-hex = "0.10.0"
+serde_json = "1.0.128"
+num_enum = "0.7.3"
+snafu = "0.8.5"
 
 [features]
 default = []
