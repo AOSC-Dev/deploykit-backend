@@ -854,10 +854,13 @@ impl InstallConfig {
     fn install_grub_impl(&self) -> Result<bool, RunGrubError> {
         if self.efi_partition.is_some() {
             info!("Installing grub to UEFI partition ...");
-            execute_grub_install(None)?;
+            execute_grub_install(None, &self.local)?;
         } else {
             info!("Installing grub to MBR partition ...");
-            execute_grub_install(Some(self.target_partition.parent_path.as_ref().unwrap()))?;
+            execute_grub_install(
+                Some(self.target_partition.parent_path.as_ref().unwrap()),
+                &self.local,
+            )?;
         }
 
         Ok(true)

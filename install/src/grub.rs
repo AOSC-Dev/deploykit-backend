@@ -24,7 +24,7 @@ pub enum RunGrubError {
 /// Runs grub-install and grub-mkconfig
 /// Must be used in a chroot context
 #[cfg(not(target_arch = "powerpc64"))]
-pub(crate) fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), RunCmdError> {
+pub(crate) fn execute_grub_install(mbr_dev: Option<&Path>, lang: &str) -> Result<(), RunCmdError> {
     use tracing::warn;
 
     let mut grub_install_args = vec![];
@@ -55,14 +55,25 @@ pub(crate) fn execute_grub_install(mbr_dev: Option<&Path>) -> Result<(), RunCmdE
         }
     };
 
-    run_command("grub-install", grub_install_args)?;
-    run_command("grub-mkconfig", ["-o", "/boot/grub/grub.cfg"])?;
+    run_command(
+        "grub-install",
+        grub_install_args,
+        vec![("LANG", lang.to_string())],
+    )?;
+    run_command(
+        "grub-mkconfig",
+        ["-o", "/boot/grub/grub.cfg"],
+        vec![("LANG", lang.to_string())],
+    )?;
 
     Ok(())
 }
 
 #[cfg(target_arch = "powerpc64")]
-pub(crate) fn execute_grub_install(_mbr_dev: Option<&Path>) -> Result<(), RunGrubError> {
+pub(crate) fn execute_grub_install(
+    _mbr_dev: Option<&Path>,
+    lang: &str,
+) -> Result<(), RunGrubError> {
     use snafu::ResultExt;
     use std::io::BufRead;
     use std::io::BufReader;
@@ -90,10 +101,18 @@ pub(crate) fn execute_grub_install(_mbr_dev: Option<&Path>) -> Result<(), RunGru
     };
 
     if needs_install {
-        run_command("grub-install", &[install_args])?;
+        run_command(
+            "grub-install",
+            &[install_args],
+            vec![("LANG", lang.to_string())],
+        )?;
     }
 
-    run_command("grub-mkconfig", ["-o", "/boot/grub/grub.cfg"])?;
+    run_command(
+        "grub-mkconfig",
+        ["-o", "/boot/grub/grub.cfg"],
+        vec![("LANG", lang.to_string())],
+    )?;
 
     Ok(())
 }

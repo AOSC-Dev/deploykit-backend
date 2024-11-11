@@ -103,8 +103,16 @@ fn set_full_name(
 /// Adds a new normal user to the guest environment
 /// Must be used in a chroot context
 pub(crate) fn add_new_user(name: &str, password: &str) -> Result<(), AddUserError> {
-    run_command("useradd", ["-m", "-s", "/bin/bash", name])?;
-    run_command("usermod", ["-aG", "audio,cdrom,video,wheel,plugdev", name])?;
+    run_command(
+        "useradd",
+        ["-m", "-s", "/bin/bash", name],
+        vec![] as Vec<(String, String)>,
+    )?;
+    run_command(
+        "usermod",
+        ["-aG", "audio,cdrom,video,wheel,plugdev", name],
+        vec![] as Vec<(String, String)>,
+    )?;
 
     chpasswd(name, password)?;
 
