@@ -16,16 +16,20 @@ pub enum RunCmdError {
     },
 }
 
-pub(crate) fn run_command<I, S>(command: &str, args: I) -> Result<(), RunCmdError>
+pub(crate) fn run_command<I, S, E, K, V>(command: &str, args: I, env: E) -> Result<(), RunCmdError>
 where
     I: IntoIterator<Item = S> + Debug,
     S: AsRef<OsStr>,
+    E: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
 {
     let cmd_str = format!("{command} {args:?}");
     info!("Running {}", cmd_str);
 
     let cmd = Command::new(command)
         .args(args)
+        .envs(env)
         .output()
         .context(ExecSnafu {
             cmd: cmd_str.to_string(),

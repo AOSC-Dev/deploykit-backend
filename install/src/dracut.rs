@@ -7,7 +7,7 @@ pub fn execute_dracut() -> Result<(), RunCmdError> {
     use crate::utils::run_command;
 
     let cmd = "/usr/bin/update-initramfs";
-    run_command(cmd, &[] as &[&str])?;
+    run_command(cmd, &[] as &[&str], vec![] as Vec<(String, String)>)?;
 
     Ok(())
 }

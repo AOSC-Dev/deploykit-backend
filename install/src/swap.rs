@@ -91,10 +91,10 @@ pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), SwapFileE
         },
     )?;
 
-    run_command("mkswap", [&swap_path]).context(MkswapSnafu {
+    run_command("mkswap", [&swap_path], vec![] as Vec<(String, String)>).context(MkswapSnafu {
         path: swap_path.clone(),
     })?;
-    run_command("swapon", [swap_path]).ok();
+    run_command("swapon", [swap_path], vec![] as Vec<(String, String)>).ok();
 
     Ok(())
 }
@@ -106,7 +106,7 @@ pub fn swapoff(tempdir: &Path) -> Result<(), RunCmdError> {
         return Ok(());
     }
 
-    run_command("swapoff", [swapfile_path])?;
+    run_command("swapoff", [swapfile_path], vec![] as Vec<(String, String)>)?;
 
     Ok(())
 }

@@ -50,12 +50,12 @@ pub(crate) fn set_hwclock_tc(utc: bool) -> Result<(), SetHwclockError> {
         if !status_is_rtc {
             return Ok(());
         } else {
-            run_command("hwclock", ["-wu"])?;
+            run_command("hwclock", ["-wu"], vec![] as Vec<(String, String)>)?;
         }
     } else if status_is_rtc {
         return Ok(());
     } else {
-        run_command("hwclock", ["-wl"])?;
+        run_command("hwclock", ["-wl"], vec![] as Vec<(String, String)>)?;
     }
 
     Ok(())
