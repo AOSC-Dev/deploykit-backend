@@ -145,6 +145,17 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), MountInnerError> {
         umount: false,
     })?;
 
+    mount_inner(
+        Some("udev"),
+        &root.join("run").join("udev"),
+        Some("tmpfs"),
+        MountFlags::NOSUID | MountFlags::NODEV,
+    )
+    .context(MountInnerSnafu {
+        point: "tmpfs",
+        umount: false,
+    })?;
+
     Ok(())
 }
 
@@ -162,7 +173,7 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), UmountError> {
         }
     }
 
-    let mut mounts = ["proc", "sys", EFIVARS_PATH, "dev", "dev/pts", "dev/shm"];
+    let mut mounts = ["proc", "sys", EFIVARS_PATH, "dev", "dev/pts", "dev/shm", "run/udev"];
 
     // 需要按顺序卸载挂载点
     mounts.reverse();
