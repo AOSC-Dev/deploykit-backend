@@ -698,7 +698,7 @@ impl InstallConfig {
                         "Removing downloaded squashfs file {}",
                         squashfs_path.display()
                     );
-                    fs::remove_file(&squashfs_path).context(RemoveDownloadedFileSnafu)?;
+                    fs::remove_file(squashfs_path).context(RemoveDownloadedFileSnafu)?;
                 }
             }
             FilesType::Dir { path, total } => {
@@ -707,7 +707,7 @@ impl InstallConfig {
                 rsync_system(
                     progress,
                     velocity.clone(),
-                    &path,
+                    path,
                     tmp_mount_path,
                     cancel_install.clone(),
                     *total,
