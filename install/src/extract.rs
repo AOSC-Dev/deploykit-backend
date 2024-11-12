@@ -20,8 +20,8 @@ pub(crate) fn extract_squashfs<P>(
     file_size: f64,
     archive: P,
     path: P,
-    progress: Arc<AtomicU8>,
-    velocity: Arc<AtomicUsize>,
+    progress: &AtomicU8,
+    velocity: &AtomicUsize,
     cancel_install: Arc<AtomicBool>,
 ) -> Result<(), io::Error>
 where
@@ -76,11 +76,11 @@ pub enum RsyncError {
 }
 
 pub(crate) fn rsync_system(
-    progress: Arc<AtomicU8>,
-    velocity: Arc<AtomicUsize>,
+    progress: &AtomicU8,
+    velocity: &AtomicUsize,
     from: &Path,
     to: &Path,
-    cancel_install: Arc<AtomicBool>,
+    cancel_install: &AtomicBool,
     total: usize,
 ) -> Result<(), RsyncError> {
     let mut from = from.to_string_lossy().to_string();

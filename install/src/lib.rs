@@ -467,7 +467,7 @@ impl InstallConfig {
 
             let res = match stage {
                 InstallationStage::SetupPartition => self
-                    .setup_partition(progress.clone(), &tmp_mount_path, &cancel_install)
+                    .setup_partition(&progress, &tmp_mount_path, &cancel_install)
                     .context(SetupPartitionSnafu),
                 InstallationStage::DownloadSquashfs => self
                     .download_squashfs(
@@ -479,34 +479,34 @@ impl InstallConfig {
                     .context(DownloadSquashfsSnafu),
                 InstallationStage::ExtractSquashfs => self
                     .extract_squashfs(
-                        progress.clone(),
-                        velocity.clone(),
+                        &progress,
+                        &velocity,
                         &tmp_mount_path,
-                        &cancel_install,
+                        cancel_install.clone(),
                         // 若能进行到这一步，则 squashfs_total_size 一定有值，故 unwrap 安全
                         files_type.as_ref().unwrap(),
                     )
                     .context(ExtractSquashfsSnafu),
                 InstallationStage::GenerateFstab => self
-                    .generate_fstab(progress.clone(), &tmp_mount_path, &cancel_install)
+                    .generate_fstab(&progress, &tmp_mount_path, &cancel_install)
                     .context(GenfstabSnafu),
                 InstallationStage::Chroot => self
-                    .chroot(progress.clone(), &tmp_mount_path, &cancel_install)
+                    .chroot(&progress, &tmp_mount_path, &cancel_install)
                     .context(ChrootSnafu),
                 InstallationStage::Dracut => {
-                    run_dracut(cancel_install.clone(), progress.clone()).context(DracutSnafu)
+                    run_dracut(&cancel_install, &progress).context(DracutSnafu)
                 }
                 InstallationStage::InstallGrub => self
-                    .install_grub(progress.clone(), &cancel_install)
+                    .install_grub(&progress, &cancel_install)
                     .context(GrubSnafu),
                 InstallationStage::GenerateSshKey => self
-                    .generate_ssh_key(progress.clone(), &cancel_install)
+                    .generate_ssh_key(&progress, &cancel_install)
                     .context(GenerateSshKeySnafu),
                 InstallationStage::ConfigureSystem => self
-                    .configure_system(progress.clone(), &cancel_install)
+                    .configure_system(&progress, &cancel_install)
                     .context(ConfigureSystemSnafu),
                 InstallationStage::EscapeChroot => self
-                    .escape_chroot(progress.clone(), &cancel_install, &root_fd)
+                    .escape_chroot(&progress, &cancel_install, &root_fd)
                     .context(EscapeChrootSnafu),
                 InstallationStage::SwapOff => self
                     .swapoff_impl(&tmp_mount_path)
@@ -571,9 +571,9 @@ impl InstallConfig {
 
     fn chroot(
         &self,
-        progress: Arc<AtomicU8>,
+        progress: &AtomicU8,
         tmp_mount_path: &Path,
-        cancel_install: &Arc<AtomicBool>,
+        cancel_install: &AtomicBool,
     ) -> Result<bool, ChrootError> {
         progress.store(0, Ordering::SeqCst);
 
@@ -590,7 +590,7 @@ impl InstallConfig {
 
     fn generate_fstab(
         &self,
-        progress: Arc<AtomicU8>,
+        progress: &AtomicU8,
         tmp_mount_path: &Path,
         cancel_install: &Arc<AtomicBool>,
     ) -> Result<bool, SetupGenfstabError> {
@@ -608,9 +608,9 @@ impl InstallConfig {
 
     fn setup_partition(
         &self,
-        progress: Arc<AtomicU8>,
+        progress: &AtomicU8,
         tmp_mount_path: &Path,
-        cancel_install: &Arc<AtomicBool>,
+        cancel_install: &AtomicBool,
     ) -> Result<bool, SetupPartitionError> {
         progress.store(0, Ordering::SeqCst);
 
@@ -663,10 +663,10 @@ impl InstallConfig {
 
     fn extract_squashfs(
         &self,
-        progress: Arc<AtomicU8>,
-        velocity: Arc<AtomicUsize>,
+        progress: &AtomicU8,
+        velocity: &AtomicUsize,
         tmp_mount_path: &Path,
-        cancel_install: &Arc<AtomicBool>,
+        cancel_install: Arc<AtomicBool>,
         files_type: &FilesType,
     ) -> Result<bool, InstallSquashfsError> {
         progress.store(0, Ordering::SeqCst);
@@ -683,7 +683,7 @@ impl InstallConfig {
                     squashfs_path.clone(),
                     tmp_mount_path.to_path_buf(),
                     progress,
-                    velocity.clone(),
+                    velocity,
                     cancel_install.clone(),
                 )
                 .context(ExtractSnafu {
@@ -706,10 +706,10 @@ impl InstallConfig {
 
                 rsync_system(
                     progress,
-                    velocity.clone(),
+                    velocity,
                     path,
                     tmp_mount_path,
-                    cancel_install.clone(),
+                    &cancel_install,
                     *total,
                 )?;
 
@@ -724,8 +724,8 @@ impl InstallConfig {
 
     fn install_grub(
         &self,
-        progress: Arc<AtomicU8>,
-        cancel_install: &Arc<AtomicBool>,
+        progress: &AtomicU8,
+        cancel_install: &AtomicBool,
     ) -> Result<bool, RunGrubError> {
         progress.store(0, Ordering::SeqCst);
         cancel_install_exit!(cancel_install);
@@ -741,8 +741,8 @@ impl InstallConfig {
 
     fn generate_ssh_key(
         &self,
-        progress: Arc<AtomicU8>,
-        cancel_install: &Arc<AtomicBool>,
+        progress: &AtomicU8,
+        cancel_install: &AtomicBool,
     ) -> Result<bool, RunCmdError> {
         progress.store(0, Ordering::SeqCst);
         cancel_install_exit!(cancel_install);
@@ -758,8 +758,8 @@ impl InstallConfig {
 
     fn escape_chroot(
         &self,
-        progress: Arc<AtomicU8>,
-        cancel_install: &Arc<AtomicBool>,
+        progress: &AtomicU8,
+        cancel_install: &AtomicBool,
         root_fd: &OwnedFd,
     ) -> Result<bool, ChrootError> {
         progress.store(0, Ordering::SeqCst);
@@ -776,8 +776,8 @@ impl InstallConfig {
 
     fn configure_system(
         &self,
-        progress: Arc<AtomicU8>,
-        cancel_install: &Arc<AtomicBool>,
+        progress: &AtomicU8,
+        cancel_install: &AtomicBool,
     ) -> Result<bool, ConfigureSystemError> {
         progress.store(0, Ordering::SeqCst);
 
@@ -995,10 +995,7 @@ impl InstallConfig {
     }
 }
 
-fn run_dracut(
-    cancel_install: Arc<AtomicBool>,
-    progress: Arc<AtomicU8>,
-) -> Result<bool, RunCmdError> {
+fn run_dracut(cancel_install: &AtomicBool, progress: &AtomicU8) -> Result<bool, RunCmdError> {
     info!("Running dracut ...");
     cancel_install_exit!(cancel_install);
 
