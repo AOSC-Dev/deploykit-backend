@@ -4,10 +4,7 @@ use rustix::{
     mount::{self, MountFlags},
 };
 use snafu::{ResultExt, Snafu};
-use std::{
-    fs::{self, read_dir},
-    path::Path,
-};
+use std::path::Path;
 use tracing::debug;
 
 use crate::utils::{run_command, RunCmdError};
@@ -162,18 +159,15 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), MountInnerError> {
 /// Remove bind mounts
 /// Note: This function should be called outside of the chroot context
 pub fn remove_files_mounts(system_path: &Path) -> Result<(), UmountError> {
-    // 先把日志写回已安装的系统
-    if let Ok(tmp) = read_dir("/tmp") {
-        for entry in tmp {
-            if let Ok(entry) = entry {
-                if entry.file_name().to_string_lossy().starts_with("dk.log") {
-                    fs::copy(entry.path(), system_path.join("var/log/dk.log")).ok();
-                }
-            }
-        }
-    }
-
-    let mut mounts = ["proc", "sys", EFIVARS_PATH, "dev", "dev/pts", "dev/shm", "run/udev"];
+    let mut mounts = [
+        "proc",
+        "sys",
+        EFIVARS_PATH,
+        "dev",
+        "dev/pts",
+        "dev/shm",
+        "run/udev",
+    ];
 
     // 需要按顺序卸载挂载点
     mounts.reverse();

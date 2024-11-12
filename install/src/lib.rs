@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Formatter},
-    fs,
+    fs::{self, create_dir_all, read_dir},
     io::{self, Write},
     os::fd::OwnedFd,
     path::{Path, PathBuf},
@@ -362,6 +362,7 @@ enum InstallationStage {
     ConfigureSystem,
     EscapeChroot,
     SwapOff,
+    CopyLog,
     UmountInnerPath,
     UmountEFIPath,
     UmountRootPath,
@@ -388,6 +389,7 @@ impl Display for InstallationStage {
             Self::ConfigureSystem => "configure system",
             Self::EscapeChroot => "escape chroot",
             Self::SwapOff => "swap off",
+            Self::CopyLog => "copy log",
             Self::UmountInnerPath => "umount inner path",
             Self::UmountEFIPath => "umount EFI path",
             Self::UmountRootPath => "umount root path",
@@ -411,7 +413,8 @@ impl InstallationStage {
             Self::GenerateSshKey => Self::ConfigureSystem,
             Self::ConfigureSystem => Self::EscapeChroot,
             Self::EscapeChroot => Self::SwapOff,
-            Self::SwapOff => Self::UmountInnerPath,
+            Self::SwapOff => Self::CopyLog,
+            Self::CopyLog => Self::UmountInnerPath,
             Self::UmountInnerPath => Self::UmountEFIPath,
             Self::UmountEFIPath => Self::UmountRootPath,
             Self::UmountRootPath => Self::Done,
@@ -453,6 +456,7 @@ impl InstallConfig {
                 InstallationStage::ConfigureSystem => 8,
                 InstallationStage::EscapeChroot => 8,
                 InstallationStage::SwapOff => 8,
+                InstallationStage::CopyLog => 8,
                 InstallationStage::UmountInnerPath => 8,
                 InstallationStage::UmountEFIPath => 8,
                 InstallationStage::UmountRootPath => 8,
@@ -507,6 +511,10 @@ impl InstallConfig {
                 InstallationStage::SwapOff => self
                     .swapoff_impl(&tmp_mount_path)
                     .context(PostInstallationSnafu),
+                InstallationStage::CopyLog => {
+                    let _ = self.copy_log_to_install_system(&tmp_mount_path);
+                    Ok(true)
+                }
                 InstallationStage::UmountInnerPath => remove_files_mounts(&tmp_mount_path)
                     .context(UmountSnafu)
                     .context(PostInstallationSnafu)
@@ -966,6 +974,24 @@ impl InstallConfig {
         }
 
         Ok(true)
+    }
+
+    fn copy_log_to_install_system(&self, tmp_mount_path: &Path) -> Option<()> {
+        let log_path = tmp_mount_path.join("var/log/dklog");
+        // 先把日志写回已安装的系统
+        create_dir_all(&log_path).ok()?;
+        let dir = read_dir("/tmp").ok()?;
+
+        for entry in dir.flatten() {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if !file_name.starts_with("dk.log") {
+                continue;
+            }
+
+            fs::copy(entry.path(), log_path.join(file_name)).ok()?;
+        }
+
+        Some(())
     }
 }
 
