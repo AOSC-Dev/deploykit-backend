@@ -138,7 +138,8 @@ fn http_download_file(
             .build()
             .unwrap()
             .block_on(async move {
-                http_download_file_inner(url, path, hash, progress, velocity, cancel_install).await
+                http_download_file_inner(url, path, hash, &progress, &velocity, &cancel_install)
+                    .await
             })
     })
     .join()
@@ -149,9 +150,9 @@ async fn http_download_file_inner(
     url: String,
     path: PathBuf,
     hash: String,
-    progress: Arc<AtomicU8>,
-    velocity: Arc<AtomicUsize>,
-    cancel_install: Arc<AtomicBool>,
+    progress: &AtomicU8,
+    velocity: &AtomicUsize,
+    cancel_install: &AtomicBool,
 ) -> Result<usize, DownloadError> {
     let client = Client::builder()
         .user_agent("deploykit")
