@@ -7,6 +7,7 @@ use install::{
     genfstab::GenfstabError,
     grub::RunGrubError,
     locale::SetHwclockError,
+    mount::MountInnerError,
     swap::SwapFileError,
     user::{AddUserError, SetFullNameError},
     utils::RunCmdError,
@@ -604,14 +605,36 @@ impl From<&ChrootError> for DkError {
                     })
                 },
             },
-            ChrootError::SetupInnerMounts { source } => Self {
+            ChrootError::SetupInnerMounts { source } => DkError::from(source),
+        }
+    }
+}
+
+impl From<&MountInnerError> for DkError {
+    fn from(value: &MountInnerError) -> Self {
+        match value {
+            MountInnerError::MountInner {
+                source,
+                point,
+                umount,
+            } => Self {
                 message: value.to_string(),
-                t: "SetupInnerMounts".to_string(),
+                t: "Chroot".to_string(),
                 data: {
                     json!({
                         "message": source.to_string(),
-                        "point": source.point,
-                        "umount": source.umount,
+                        "point": point,
+                        "umount": umount,
+                    })
+                },
+            },
+            MountInnerError::CreateDir { dir, source } => Self {
+                message: value.to_string(),
+                t: "Chroot".to_string(),
+                data: {
+                    json!({
+                        "message": source.to_string(),
+                        "dir": dir.display().to_string(),
                     })
                 },
             },
