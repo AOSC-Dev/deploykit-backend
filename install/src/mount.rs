@@ -4,7 +4,11 @@ use rustix::{
     mount::{self, MountFlags},
 };
 use snafu::{ResultExt, Snafu};
-use std::path::Path;
+use std::{
+    fs::create_dir_all,
+    io,
+    path::{Path, PathBuf},
+};
 use tracing::debug;
 
 use crate::utils::{run_command, RunCmdError};
@@ -65,11 +69,15 @@ pub fn sync_disk() {
 }
 
 #[derive(Debug, Snafu)]
-#[snafu(display("failed to mount {point}"))]
-pub struct MountInnerError {
-    source: Errno,
-    pub point: &'static str,
-    pub umount: bool,
+pub enum MountInnerError {
+    #[snafu(display("failed to mount {point}"))]
+    MountInner {
+        source: Errno,
+        point: &'static str,
+        umount: bool,
+    },
+    #[snafu(display("failed to crate dir: {}", dir.display()))]
+    CreateDir { dir: PathBuf, source: io::Error },
 }
 
 /// Setup all the necessary bind mounts
@@ -142,9 +150,14 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), MountInnerError> {
         umount: false,
     })?;
 
+    let run_dev = root.join("run").join("udev");
+    create_dir_all(&run_dev).context(CreateDirSnafu {
+        dir: run_dev.to_path_buf(),
+    })?;
+
     mount_inner(
         Some("udev"),
-        &root.join("run").join("udev"),
+        &run_dev,
         Some("tmpfs"),
         MountFlags::NOSUID | MountFlags::NODEV,
     )
