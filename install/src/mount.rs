@@ -159,7 +159,7 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), MountInnerError> {
         Some("udev"),
         &run_dev,
         Some("tmpfs"),
-        MountFlags::NOSUID | MountFlags::NODEV,
+        MountFlags::NOSUID | MountFlags::NODEV | MountFlags::BIND,
     )
     .context(MountInnerSnafu {
         point: "tmpfs",
