@@ -31,8 +31,7 @@ pub fn is_root_device(root: &str, d: &mut Device) -> Result<bool, PartitionError
     for i in disk.parts() {
         debug!("{} {:?}", root, i.get_path());
         if i.get_path()
-            .map(|x| x.to_string_lossy() == root)
-            .unwrap_or(false)
+            .is_some_and(|part| part.to_string_lossy() == root)
         {
             return Ok(true);
         }

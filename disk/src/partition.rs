@@ -574,11 +574,28 @@ pub fn find_root_mount_point() -> Result<String, PartitionError> {
     let f = fs::File::open("/proc/mounts").map_err(PartitionError::ReadMounts)?;
     let lines = BufReader::new(f).lines();
 
+    let mut match_livemnt = None;
+    let mut match_rootfs = None;
+
     for i in lines.map_while(Result::ok) {
+        if match_livemnt.is_some() && match_rootfs.is_some() {
+            break;
+        }
+
         let i = i.split_ascii_whitespace().collect::<Vec<_>>();
         if i[1] == "/" {
-            return Ok(i[0].to_string());
+            // Livekit
+            match_rootfs = Some(i[0].to_string());
+        } else if i[1] == "/run/livekit/livemnt" {
+            // Installer
+            match_livemnt = Some(i[0].to_string());
         }
+    }
+
+    if let Some(match_livemnt) = match_livemnt {
+        return Ok(match_livemnt);
+    } else if let Some(match_rootfs) = match_rootfs {
+        return Ok(match_rootfs);
     }
 
     Err(PartitionError::ReadMounts(io::Error::new(
