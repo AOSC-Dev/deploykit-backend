@@ -7,7 +7,7 @@ use tracing::level_filters::LevelFilter;
 use tracing::{debug, info};
 use tracing_subscriber::fmt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
-use zbus::{Connection, ConnectionBuilder};
+use zbus::{connection, Connection};
 
 mod error;
 mod server;
@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
 
     let deploykit_server = DeploykitServer::default();
 
-    let _conn = ConnectionBuilder::system()?
+    let _conn = connection::Builder::system()?
         .name("io.aosc.Deploykit")?
         .serve_at("/io/aosc/Deploykit", deploykit_server)?
         .build()

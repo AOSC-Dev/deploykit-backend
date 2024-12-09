@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sysinfo = "0.32.0"
+sysinfo = "0.33.0"
 unsquashfs-wrapper = "0.2.1"
 rustix = { version = "0.38.37", features = ["process", "fs", "mount", "system"] }
 tracing = "0.1.40"
