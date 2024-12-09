@@ -389,7 +389,7 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
     let sectors = mbr.get_maximum_partition_size()?;
     let starting_lba = mbr
         .find_optimal_place(sectors)
-        .ok_or_else(|| PartitionError::GetOptimalPlace)?;
+        .ok_or(PartitionError::GetOptimalPlace)?;
 
     mbr[1] = mbrman::MBRPartitionEntry {
         boot: mbrman::BOOT_INACTIVE,     // boot flag

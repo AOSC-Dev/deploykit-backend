@@ -155,16 +155,12 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), MountInnerError> {
         dir: run_dev.to_path_buf(),
     })?;
 
-    mount_inner(
-        Some("/run/udev"),
-        &run_dev,
-        Some("tmpfs"),
-        MountFlags::BIND,
-    )
-    .context(MountInnerSnafu {
-        point: "tmpfs",
-        umount: false,
-    })?;
+    mount_inner(Some("/run/udev"), &run_dev, Some("tmpfs"), MountFlags::BIND).context(
+        MountInnerSnafu {
+            point: "tmpfs",
+            umount: false,
+        },
+    )?;
 
     Ok(())
 }
