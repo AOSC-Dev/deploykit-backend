@@ -23,6 +23,7 @@ pub(crate) fn extract_squashfs<P>(
     progress: &AtomicU8,
     velocity: &AtomicUsize,
     cancel_install: Arc<AtomicBool>,
+    eta: &AtomicUsize,
 ) -> Result<(), io::Error>
 where
     P: AsRef<Path>,
@@ -34,6 +35,7 @@ where
     let limit_thread = if total_memory <= 2 { Some(1) } else { None };
 
     let mut now = Instant::now();
+    let now2 = Instant::now();
     let mut v_download_len = 0.0;
 
     unsquashfs_wrapper::extract(
@@ -42,15 +44,19 @@ where
         limit_thread,
         move |count| {
             let elapsed = now.elapsed().as_secs();
+            let v = ((v_download_len / 1024.0) / elapsed as f64) as usize;
             if elapsed >= 1 {
                 now = Instant::now();
-                velocity.store(
-                    ((v_download_len / 1024.0) / elapsed as f64) as usize,
-                    Ordering::SeqCst,
-                );
+                velocity.store(v, Ordering::SeqCst);
                 v_download_len = 0.0;
             }
             progress.store(count as u8, Ordering::SeqCst);
+            eta.store(
+                ((file_size as usize).checked_div(velocity.load(Ordering::SeqCst)))
+                    .unwrap_or(0)
+                    .saturating_sub(now2.elapsed().as_secs() as usize),
+                Ordering::SeqCst,
+            );
             v_download_len += file_size * count as f64 / 100.0;
         },
         cancel_install,
@@ -82,6 +88,7 @@ pub(crate) fn rsync_system(
     to: &Path,
     cancel_install: &AtomicBool,
     total: usize,
+    eta: &AtomicUsize,
 ) -> Result<(), RsyncError> {
     let mut from = from.to_string_lossy().to_string();
     let mut to = to.to_string_lossy().to_string();
@@ -119,6 +126,7 @@ pub(crate) fn rsync_system(
     let mut stdout = BufReader::new(child.stdout.take().context(GetStdoutSnafu)?);
 
     let now = Instant::now();
+    let now2 = Instant::now();
     loop {
         if cancel_install.load(Ordering::SeqCst) {
             child.kill().ok();
@@ -156,15 +164,18 @@ pub(crate) fn rsync_system(
                             Ordering::SeqCst,
                         );
                         let elapsed = now.elapsed().as_secs();
+                        let v = total
+                            * ((total_files - uncheck) as f64 / total_files as f64) as usize
+                            / elapsed as usize;
                         if elapsed >= 1 {
-                            velocity.store(
-                                total
-                                    * ((total_files - uncheck) as f64 / total_files as f64)
-                                        as usize
-                                    / elapsed as usize,
-                                Ordering::SeqCst,
-                            );
+                            velocity.store(v, Ordering::SeqCst);
                         }
+                        eta.store(
+                            ((total_files as usize).checked_div(velocity.load(Ordering::SeqCst)))
+                                .unwrap_or(0)
+                                .saturating_sub(now2.elapsed().as_secs() as usize),
+                            Ordering::SeqCst,
+                        );
                     } else {
                         warn!("rsync progress has except output: {}", line);
                     }

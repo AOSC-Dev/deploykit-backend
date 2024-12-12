@@ -44,6 +44,7 @@ pub struct DeploykitServer {
     install_thread: Option<JoinHandle<()>>,
     partition_thread: Option<JoinHandle<()>>,
     cancel_run_install: Arc<AtomicBool>,
+    eta: Arc<AtomicUsize>,
     auto_partition_progress: Arc<Mutex<AutoPartitionProgress>>,
 }
 
@@ -63,6 +64,7 @@ impl Default for DeploykitServer {
             install_thread: None,
             partition_thread: None,
             cancel_run_install: Arc::new(AtomicBool::new(false)),
+            eta: Arc::new(AtomicUsize::new(0)),
             auto_partition_progress: Arc::new(Mutex::new(AutoPartitionProgress::Pending)),
         }
     }
@@ -76,6 +78,7 @@ pub enum ProgressStatus {
         step: Arc<AtomicU8>,
         progress: Arc<AtomicU8>,
         v: Arc<AtomicUsize>,
+        eta: Arc<AtomicUsize>,
     },
     Error(DkError),
     Finish,
@@ -316,6 +319,7 @@ impl DeploykitServer {
             self.v.clone(),
             self.progress.clone(),
             self.cancel_run_install.clone(),
+            self.eta.clone(),
         ) {
             Ok(j) => self.install_thread = Some(j),
             Err(e) => return Message::err(e),
@@ -327,6 +331,7 @@ impl DeploykitServer {
                 step: self.step.clone(),
                 progress: self.progress_num.clone(),
                 v: self.v.clone(),
+                eta: self.eta.clone(),
             };
         }
 
@@ -612,6 +617,7 @@ fn start_install_inner(
     v: Arc<AtomicUsize>,
     ps: Arc<Mutex<ProgressStatus>>,
     cancel_install: Arc<AtomicBool>,
+    eta: Arc<AtomicUsize>,
 ) -> Result<JoinHandle<()>, DkError> {
     let mut config = InstallConfig::try_from(config).map_err(|e| DkError::from(&e))?;
 
@@ -666,6 +672,7 @@ fn start_install_inner(
                     v.clone(),
                     t.clone(),
                     cancel_install_clone,
+                    eta.clone(),
                 )
                 .map_err(|e| DkError::from(&e));
 

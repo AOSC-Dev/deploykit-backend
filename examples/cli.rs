@@ -162,12 +162,12 @@ async fn main() -> Result<()> {
         &proxy,
         "download",
         &serde_json::json!({
-            // "Http": {
-            //     "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20240414_amd64.squashfs",
-            //     "hash": "fe99624958e33c5b5ac71b3cf88822f343fc31814655bb3e554753a7fd0c1051",
-            // }
+            "Http": {
+                "url": "https://mirrors.bfsu.edu.cn/anthon/aosc-os/os-amd64/base/aosc-os_base_20240916_amd64.squashfs",
+                "hash": "80de75c84c2d488047cc8c89b6869e267a56831bfddd1c317dbe88a1e1cfcc46",
+            }
             // "File": "/home/saki/squashfs"
-            "Dir": "/run/livekit/sysroots/base"
+            // "Dir": "/run/livekit/sysroots/base"
         })
         .to_string(),
     )
