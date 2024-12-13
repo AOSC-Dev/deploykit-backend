@@ -1,3 +1,4 @@
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -224,10 +225,11 @@ async fn http_download_file_inner(
     let pc = path.clone();
 
     tokio::task::spawn_blocking(move || {
-        let mut file = std::fs::File::open(&pc).context(CreateFileSnafu { path: pc.clone() })?;
+        let file = std::fs::File::open(&pc).context(CreateFileSnafu { path: pc.clone() })?;
+        let mut buf = BufReader::new(file);
 
         let mut sha256 = Sha256::new();
-        std::io::copy(&mut file, &mut sha256).context(WriteFileSnafu { path: pc.clone() })?;
+        std::io::copy(&mut buf, &mut sha256).context(WriteFileSnafu { path: pc.clone() })?;
 
         let download_hash = sha256.finalize().to_vec();
         let checksum = hex_string(&download_hash);
