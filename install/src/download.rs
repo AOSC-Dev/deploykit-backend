@@ -68,6 +68,7 @@ pub(crate) fn download_file(
     progress: Arc<AtomicU8>,
     velocity: Arc<AtomicUsize>,
     cancel_install: Arc<AtomicBool>,
+    eta: Arc<AtomicUsize>,
 ) -> Result<FilesType, DownloadError> {
     match download_type {
         DownloadType::Http { url, hash, to_path } => {
@@ -79,6 +80,7 @@ pub(crate) fn download_file(
                 progress.clone(),
                 velocity.clone(),
                 cancel_install,
+                eta.clone(),
             )?;
             Ok(FilesType::File {
                 path: to_path.clone(),
@@ -129,6 +131,7 @@ fn http_download_file(
     progress: Arc<AtomicU8>,
     velocity: Arc<AtomicUsize>,
     cancel_install: Arc<AtomicBool>,
+    eta: Arc<AtomicUsize>,
 ) -> Result<usize, DownloadError> {
     let url = url.to_string();
     let hash = hash.to_string();
@@ -139,8 +142,16 @@ fn http_download_file(
             .build()
             .unwrap()
             .block_on(async move {
-                http_download_file_inner(url, path, hash, &progress, &velocity, &cancel_install)
-                    .await
+                http_download_file_inner(
+                    url,
+                    path,
+                    hash,
+                    &progress,
+                    &velocity,
+                    &cancel_install,
+                    &eta,
+                )
+                .await
             })
     })
     .join()
@@ -154,6 +165,7 @@ async fn http_download_file_inner(
     progress: &AtomicU8,
     velocity: &AtomicUsize,
     cancel_install: &AtomicBool,
+    eta: &AtomicUsize,
 ) -> Result<usize, DownloadError> {
     let client = Client::builder()
         .user_agent("deploykit")
@@ -190,7 +202,9 @@ async fn http_download_file_inner(
         .and_then(|x| x.error_for_status())
         .context(SendRequestSnafu)?;
 
-    let mut now = Instant::now();
+    let mut now1 = Instant::now();
+    let now2 = Instant::now();
+
     let mut v_download_len = 0;
     let mut download_len = 0;
 
@@ -199,8 +213,8 @@ async fn http_download_file_inner(
         .await
         .context(DownloadFileSnafu { path: path.clone() })?
     {
-        if now.elapsed().as_secs() >= 1 {
-            now = Instant::now();
+        if now1.elapsed().as_secs() >= 1 {
+            now1 = Instant::now();
             velocity.store(v_download_len / 1024, Ordering::SeqCst);
             v_download_len = 0;
         }
@@ -215,6 +229,15 @@ async fn http_download_file_inner(
 
         progress.store(
             (download_len as f64 / total_size as f64 * 100.0).round() as u8,
+            Ordering::SeqCst,
+        );
+
+        let all_time = total_size
+            .checked_div(velocity.load(Ordering::SeqCst) * 1024)
+            .unwrap_or(0);
+
+        eta.store(
+            all_time.saturating_sub(now2.elapsed().as_secs() as usize),
             Ordering::SeqCst,
         );
 

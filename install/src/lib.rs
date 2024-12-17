@@ -431,6 +431,7 @@ impl InstallConfig {
         velocity: Arc<AtomicUsize>,
         tmp_mount_path: Arc<PathBuf>,
         cancel_install: Arc<AtomicBool>,
+        eta: Arc<AtomicUsize>,
     ) -> Result<bool, InstallErr> {
         let root_fd = get_dir_fd(Path::new("/")).context(GetDirFdSnafu)?;
 
@@ -474,6 +475,7 @@ impl InstallConfig {
                         progress.clone(),
                         velocity.clone(),
                         Arc::clone(&cancel_install),
+                        eta.clone(),
                         &mut files_type,
                     )
                     .context(DownloadSquashfsSnafu),
@@ -485,6 +487,7 @@ impl InstallConfig {
                         cancel_install.clone(),
                         // 若能进行到这一步，则 squashfs_total_size 一定有值，故 unwrap 安全
                         files_type.as_ref().unwrap(),
+                        &eta,
                     )
                     .context(ExtractSquashfsSnafu),
                 InstallationStage::GenerateFstab => self
@@ -648,13 +651,14 @@ impl InstallConfig {
         progress: Arc<AtomicU8>,
         velocity: Arc<AtomicUsize>,
         cancel_install: Arc<AtomicBool>,
+        eta: Arc<AtomicUsize>,
         res: &mut Option<FilesType>,
     ) -> Result<bool, DownloadError> {
         progress.store(0, Ordering::SeqCst);
 
         cancel_install_exit!(cancel_install);
 
-        let f = download_file(&self.download, progress, velocity, cancel_install)?;
+        let f = download_file(&self.download, progress, velocity, cancel_install, eta)?;
 
         *res = Some(f);
 
@@ -668,6 +672,7 @@ impl InstallConfig {
         tmp_mount_path: &Path,
         cancel_install: Arc<AtomicBool>,
         files_type: &FilesType,
+        eta: &AtomicUsize,
     ) -> Result<bool, InstallSquashfsError> {
         progress.store(0, Ordering::SeqCst);
 
@@ -685,6 +690,7 @@ impl InstallConfig {
                     progress,
                     velocity,
                     cancel_install.clone(),
+                    eta,
                 )
                 .context(ExtractSnafu {
                     from: squashfs_path.clone(),
@@ -711,6 +717,7 @@ impl InstallConfig {
                     tmp_mount_path,
                     &cancel_install,
                     *total,
+                    eta,
                 )?;
 
                 cancel_install_exit!(cancel_install);
