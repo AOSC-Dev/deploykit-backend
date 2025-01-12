@@ -182,7 +182,7 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), UmountError> {
     mounts.reverse();
 
     for i in mounts {
-        if (cfg!(target_arch = "mips64") || !is_efi_booted()) && i == "efivarfs" {
+        if (cfg!(target_arch = "mips64") || !is_efi_booted()) && i == EFIVARS_PATH {
             continue;
         }
 
