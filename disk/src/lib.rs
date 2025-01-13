@@ -133,8 +133,14 @@ impl PartitionError {
     }
 }
 
+#[cfg(not(target_arch = "mips64"))]
 pub fn is_efi_booted() -> bool {
     Path::new("/sys/firmware/efi").exists()
+}
+
+#[cfg(target_arch = "mips64")]
+pub fn is_efi_booted() -> bool {
+    Path::new("/sys/firmware/lefi").exists()
 }
 
 #[derive(Debug, Snafu)]

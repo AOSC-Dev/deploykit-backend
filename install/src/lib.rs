@@ -290,6 +290,7 @@ impl Default for InstallConfigPrepare {
     }
 }
 
+#[derive(Debug)]
 pub struct InstallConfig {
     local: String,
     timezone: String,
@@ -432,6 +433,8 @@ impl InstallConfig {
         tmp_mount_path: Arc<PathBuf>,
         cancel_install: Arc<AtomicBool>,
     ) -> Result<bool, InstallErr> {
+        debug!("Install config: {:#?}", self);
+
         let root_fd = get_dir_fd(Path::new("/")).context(GetDirFdSnafu)?;
 
         let mut stage = InstallationStage::default();

@@ -104,7 +104,7 @@ pub fn setup_files_mounts(root: &Path) -> Result<(), MountInnerError> {
         umount: false,
     })?;
 
-    if is_efi_booted() {
+    if is_efi_booted() && !cfg!(target_arch = "mips64") {
         mount_inner(
             Some("efivarfs"),
             &root.join(EFIVARS_PATH),
@@ -182,7 +182,7 @@ pub fn remove_files_mounts(system_path: &Path) -> Result<(), UmountError> {
     mounts.reverse();
 
     for i in mounts {
-        if i == "efivarfs" && !is_efi_booted() {
+        if (cfg!(target_arch = "mips64") || !is_efi_booted()) && i == EFIVARS_PATH {
             continue;
         }
 

@@ -35,10 +35,11 @@ pub(crate) fn execute_grub_install(mbr_dev: Option<&Path>, lang: &str) -> Result
         grub_install_args.push(path);
     } else {
         let (target, is_efi) = match get_arch_name() {
-            Some("amd64") => (&["--target=x86_64-efi"][..], true),
-            Some("arm64") => (&["--target=arm64-efi", "--removable"][..], true),
-            Some("riscv64") => (&["--target=riscv64-efi", "--removable"][..], true),
-            Some("loongarch64") => (&["--target=loongarch64-efi", "--removable"][..], true),
+            Some("amd64") => (&[][..], true),
+            Some("arm64") => (&["--force-extra-removable"][..], true),
+            Some("riscv64") => (&["--force-extra-removable"][..], true),
+            Some("loongarch64") => (&["--force-extra-removable"][..], true),
+            Some("loongson3") => (&["--removable"][..], true),
             Some(arch) => {
                 info!("This architecture {arch} does not support grub");
                 return Ok(());
