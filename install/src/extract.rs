@@ -6,12 +6,14 @@ use std::{
         atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
         Arc,
     },
+    thread,
     time::Instant,
 };
 
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use sysinfo::System;
 use tracing::{debug, error, warn};
+use unsquashfs_wrapper::{Unsquashfs, UnsquashfsError};
 
 use crate::utils::RunCmdError;
 
@@ -20,10 +22,10 @@ pub(crate) fn extract_squashfs<P>(
     file_size: f64,
     archive: P,
     path: P,
-    progress: &AtomicU8,
-    velocity: &AtomicUsize,
+    progress: Arc<AtomicU8>,
+    velocity: Arc<AtomicUsize>,
     cancel_install: Arc<AtomicBool>,
-) -> Result<(), io::Error>
+) -> Result<(), UnsquashfsError>
 where
     P: AsRef<Path>,
 {
@@ -36,11 +38,14 @@ where
     let mut now = Instant::now();
     let mut v_download_len = 0.0;
 
-    unsquashfs_wrapper::extract(
-        archive,
-        path,
-        limit_thread,
-        move |count| {
+    let unsquashfs = Unsquashfs::default();
+    let unsquashfs_cancel = unsquashfs.clone();
+
+    let archive = archive.as_ref().to_path_buf();
+    let path = path.as_ref().to_path_buf();
+
+    let worker = thread::spawn(move || {
+        unsquashfs.extract(archive, path, limit_thread, move |count| {
             let elapsed = now.elapsed().as_secs();
             if elapsed >= 1 {
                 now = Instant::now();
@@ -52,11 +57,19 @@ where
             }
             progress.store(count as u8, Ordering::SeqCst);
             v_download_len += file_size * count as f64 / 100.0;
-        },
-        cancel_install,
-    )?;
+        })
+    });
 
-    Ok(())
+    loop {
+        if cancel_install.load(Ordering::SeqCst) {
+            unsquashfs_cancel.cancel()?;
+            return Ok(());
+        }
+
+        if worker.is_finished() {
+            return worker.join().unwrap();
+        }
+    }
 }
 
 #[derive(Debug, Snafu)]
