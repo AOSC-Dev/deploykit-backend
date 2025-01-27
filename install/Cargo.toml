@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 sysinfo = "0.33.0"
-unsquashfs-wrapper = "0.2.1"
+unsquashfs-wrapper = "0.3.0"
 rustix = { version = "0.38.37", features = ["process", "fs", "mount", "system"] }
 tracing = "0.1.40"
 disk = { path = "../disk" }

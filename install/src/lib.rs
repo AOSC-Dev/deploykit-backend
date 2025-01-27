@@ -36,6 +36,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use swap::SwapFileError;
 use sysinfo::System;
 use tracing::{debug, error, info};
+use unsquashfs_wrapper::UnsquashfsError;
 use user::{AddUserError, SetFullNameError};
 use utils::RunCmdError;
 use zoneinfo::SetZoneinfoError;
@@ -177,7 +178,7 @@ pub enum SetupGenfstabError {
 pub enum InstallSquashfsError {
     #[snafu(display("Failed to extract squashfs {} to {}", from.display(), to.display()))]
     Extract {
-        source: std::io::Error,
+        source: UnsquashfsError,
         from: PathBuf,
         to: PathBuf,
     },
@@ -482,8 +483,8 @@ impl InstallConfig {
                     .context(DownloadSquashfsSnafu),
                 InstallationStage::ExtractSquashfs => self
                     .extract_squashfs(
-                        &progress,
-                        &velocity,
+                        progress.clone(),
+                        velocity.clone(),
                         &tmp_mount_path,
                         cancel_install.clone(),
                         // 若能进行到这一步，则 squashfs_total_size 一定有值，故 unwrap 安全
@@ -666,8 +667,8 @@ impl InstallConfig {
 
     fn extract_squashfs(
         &self,
-        progress: &AtomicU8,
-        velocity: &AtomicUsize,
+        progress: Arc<AtomicU8>,
+        velocity: Arc<AtomicUsize>,
         tmp_mount_path: &Path,
         cancel_install: Arc<AtomicBool>,
         files_type: &FilesType,
@@ -685,8 +686,8 @@ impl InstallConfig {
                     *total_size as f64,
                     squashfs_path.clone(),
                     tmp_mount_path.to_path_buf(),
-                    progress,
-                    velocity,
+                    progress.clone(),
+                    velocity.clone(),
                     cancel_install.clone(),
                 )
                 .context(ExtractSnafu {
@@ -708,8 +709,8 @@ impl InstallConfig {
                 cancel_install_exit!(cancel_install);
 
                 rsync_system(
-                    progress,
-                    velocity,
+                    &progress,
+                    &velocity,
                     path,
                     tmp_mount_path,
                     &cancel_install,

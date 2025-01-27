@@ -2729,6 +2729,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pty-process"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8749b545e244c90bf74a5767764cc2194f1888bb42f84015486a64c82bea5cc0"
+dependencies = [
+ "libc",
+ "rustix",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2971,6 +2981,7 @@ checksum = "a78891ee6bf2340288408954ac787aa063d8e8817e9f53abb37c695c6d834ef6"
 dependencies = [
  "bitflags 2.7.0",
  "errno 0.3.10",
+ "itoa",
  "libc",
  "linux-raw-sys",
  "windows-sys 0.59.0",
@@ -3763,13 +3774,12 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "unsquashfs-wrapper"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "384161dc7577675756d0118dac1a7199406472b8a21872bb4b8f11873ab175c4"
+checksum = "c233ab927e810aac155e6a22ecc44a6aaf8d66682bf7c287c80c68e2680110c9"
 dependencies = [
- "libc",
- "rustix",
- "tracing",
+ "pty-process",
+ "thiserror 2.0.10",
  "which 7.0.1",
 ]
 
