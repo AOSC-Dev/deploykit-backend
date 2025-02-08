@@ -262,7 +262,11 @@ pub fn auto_create_partitions_gpt(
             err: e,
         })?;
 
-    let sector_size = gptman::linux::get_sector_size(&mut f).map_err(PartitionError::GetTable)?;
+    let sector_size: u64 = gptman::linux::get_sector_size(&mut f)
+        .map_err(PartitionError::GetTable)?
+        .try_into()
+        .map_err(PartitionError::Convert)?;
+
     clear_start_sector(&mut f, sector_size)?;
 
     // 创建新的分区表
@@ -380,12 +384,14 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
             err: e,
         })?;
 
-    let sector_size =
-        gptman::linux::get_sector_size(&mut f).map_err(PartitionError::GetTable)? as u32;
+    let sector_size: u64 = gptman::linux::get_sector_size(&mut f)
+        .map_err(PartitionError::GetTable)?
+        .try_into()
+        .map_err(PartitionError::Convert)?;
 
-    clear_start_sector(&mut f, sector_size as u64)?;
+    clear_start_sector(&mut f, sector_size)?;
 
-    let mut mbr = MBR::new_from(&mut f, sector_size, mbr_disk_signature())?;
+    let mut mbr = MBR::new_from(&mut f, sector_size as u32, mbr_disk_signature())?;
     let sectors = mbr.get_maximum_partition_size()?;
     let starting_lba = mbr
         .find_optimal_place(sectors)
