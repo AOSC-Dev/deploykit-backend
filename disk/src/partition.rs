@@ -533,6 +533,11 @@ pub fn all_esp_partitions() -> Result<Vec<DkPartition>, PartitionError> {
     let mut res = vec![];
 
     'a: for (path, lba) in dev_path_and_sector {
+        // 一些固件会把一整个块设备挂载到 livemnt
+        if path.to_string_lossy() == root {
+            continue 'a;
+        }
+
         if let Ok(mut d) = Device::new(&path) {
             let sector_size = d.sector_size();
             if let Ok(disk) = Disk::new(&mut d) {

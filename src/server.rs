@@ -200,6 +200,11 @@ impl DeploykitServer {
         };
 
         for mut i in list_devices() {
+            if i.path().to_string_lossy() == root {
+                // 如果 root 是一个块设备
+                continue;
+            }
+
             let is_root_device = match is_root_device(&root, &mut i) {
                 Ok(v) => v,
                 Err(e) => {
