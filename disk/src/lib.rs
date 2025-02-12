@@ -1,6 +1,6 @@
 use crate::partition::get_partition_table_type;
 use std::{
-    fmt::Display, io, num::TryFromIntError, path::{Path, PathBuf}
+    fmt::Display, io, path::{Path, PathBuf}
 };
 
 use gptman::linux::BlockError;
@@ -59,8 +59,6 @@ pub enum PartitionError {
     DmSetup { source: std::io::Error },
     #[error("Failed to open lvs")]
     OpenLvs(std::io::Error),
-    #[error("Failed to convert number")]
-    Convert(TryFromIntError),
 }
 
 impl Serialize for PartitionError {
