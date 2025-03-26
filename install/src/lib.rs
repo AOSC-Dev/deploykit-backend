@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt::{Display, Formatter},
     fs::{self, create_dir_all, read_dir},
     io::{self, Write},
@@ -26,6 +27,7 @@ use grub::RunGrubError;
 use locale::SetHwclockError;
 use mount::{mount_root_path, UmountError};
 use num_enum::IntoPrimitive;
+use quirk::get_matches_quirk;
 use rustix::{
     fs::sync,
     io::Errno,
@@ -350,7 +352,7 @@ macro_rules! cancel_install_exit {
     };
 }
 
-#[derive(Clone, IntoPrimitive)]
+#[derive(Clone, IntoPrimitive, PartialEq, Eq)]
 #[repr(u8)]
 enum InstallationStage {
     SetupPartition = 1,
@@ -368,6 +370,7 @@ enum InstallationStage {
     UmountInnerPath,
     UmountEFIPath,
     UmountRootPath,
+    Quirk,
     Done,
 }
 
@@ -395,6 +398,7 @@ impl Display for InstallationStage {
             Self::UmountInnerPath => "umount inner path",
             Self::UmountEFIPath => "umount EFI path",
             Self::UmountRootPath => "umount root path",
+            Self::Quirk => "run quirk",
             Self::Done => "done",
         };
 
@@ -419,7 +423,8 @@ impl InstallationStage {
             Self::CopyLog => Self::UmountInnerPath,
             Self::UmountInnerPath => Self::UmountEFIPath,
             Self::UmountEFIPath => Self::UmountRootPath,
-            Self::UmountRootPath => Self::Done,
+            Self::UmountRootPath => Self::Quirk,
+            Self::Quirk => Self::Done,
             Self::Done => Self::Done,
         }
     }
@@ -435,6 +440,37 @@ impl InstallConfig {
         cancel_install: Arc<AtomicBool>,
     ) -> Result<bool, InstallErr> {
         debug!("Install config: {:#?}", self);
+
+        let quirks = get_matches_quirk("/usr/share/deploykit-backend/quirks");
+
+        let mut no_run = HashSet::new();
+        let mut quirk_commands = vec![];
+
+        for quirk in quirks {
+            if let Some(skip_stages) = quirk.skip_stages {
+                no_run.extend(skip_stages);
+            }
+            quirk_commands.push(quirk.command);
+        }
+
+        let no_run = no_run
+            .iter()
+            .flat_map(|x| match x.as_str() {
+                "SetupPartition" => Some(InstallationStage::SetupPartition),
+                "DownloadSquashfs" => Some(InstallationStage::DownloadSquashfs),
+                "ExtractSquashfs" => Some(InstallationStage::ExtractSquashfs),
+                "GenerateFstab" => Some(InstallationStage::GenerateFstab),
+                "Dracut" => Some(InstallationStage::Dracut),
+                "InstallGrub" => Some(InstallationStage::InstallGrub),
+                "GenerateSshKey" => Some(InstallationStage::GenerateSshKey),
+                "ConfigureSystem" => Some(InstallationStage::ConfigureSystem),
+                "SwapOff" => Some(InstallationStage::SwapOff),
+                x => {
+                    error!("Unsupport skip step: {x}");
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
 
         let root_fd = get_dir_fd(Path::new("/")).context(GetDirFdSnafu)?;
 
@@ -464,10 +500,16 @@ impl InstallConfig {
                 InstallationStage::UmountInnerPath => 8,
                 InstallationStage::UmountEFIPath => 8,
                 InstallationStage::UmountRootPath => 8,
+                InstallationStage::Quirk => 8,
                 InstallationStage::Done => 8,
             };
 
             step.store(num, Ordering::SeqCst);
+
+            if no_run.contains(&stage) {
+                stage = stage.get_next_stage();
+                continue;
+            }
 
             let res = match stage {
                 InstallationStage::SetupPartition => self
@@ -538,6 +580,27 @@ impl InstallConfig {
                     .context(UmountSnafu)
                     .context(PostInstallationSnafu)
                     .map(|_| true),
+                InstallationStage::Quirk => {
+                    for cmd in &quirk_commands {
+                        let out = match Command::new("bash").arg("-c").arg(cmd).output() {
+                            Ok(out) => out,
+                            Err(e) => {
+                                error!("Run {} failed: {}", cmd, e);
+                                continue;
+                            }
+                        };
+
+                        if !out.status.success() {
+                            error!(
+                                "Run {} failed: stderr: {}",
+                                cmd,
+                                String::from_utf8_lossy(&out.stderr)
+                            )
+                        }
+                    }
+
+                    Ok(true)
+                }
                 InstallationStage::Done => break,
             };
 

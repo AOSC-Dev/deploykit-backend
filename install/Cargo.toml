@@ -20,6 +20,7 @@ faster-hex = "0.10.0"
 serde_json = "1.0.128"
 num_enum = "0.7.3"
 snafu = "0.8.5"
+quirk = { path = "../quirk" }
 
 [features]
 default = []
