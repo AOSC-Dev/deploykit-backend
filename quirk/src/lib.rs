@@ -57,6 +57,11 @@ pub enum QuirkError {
         source: toml::de::Error,
         path: PathBuf,
     },
+    #[snafu(display("Pattern {regex} got error"))]
+    Regex {
+        source: fancy_regex::Error,
+        regex: String,
+    },
 }
 
 fn get_quirk_configs(dir: impl AsRef<Path>) -> Vec<(QuirkConfig, PathBuf)> {
@@ -96,25 +101,13 @@ pub fn get_matches_quirk(dir: impl AsRef<Path>) -> Vec<QuirkConfigInner> {
     for (mut config, path) in configs {
         match config.model {
             QuirkConfigModel::Dmi { ref dmi_pattern } => {
-                let regex = match Regex::new(dmi_pattern) {
-                    Ok(r) => r,
+                match dmi_is_match(&modalias, dmi_pattern) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
                     Err(e) => {
-                        error!("Pattern {} not illegal: {}", dmi_pattern, e);
+                        error!("{e}");
                         continue;
                     }
-                };
-
-                let is_match = match regex.is_match(&modalias) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        error!("Regex runtime error for {}: {}", dmi_pattern, e);
-                        continue;
-                    }
-                };
-
-                if !is_match {
-                    debug!("{} and {} not match", dmi_pattern, modalias);
-                    continue;
                 }
 
                 modify_command_path(&mut config, &path);
@@ -141,6 +134,23 @@ pub fn get_matches_quirk(dir: impl AsRef<Path>) -> Vec<QuirkConfigInner> {
     }
 
     matches
+}
+
+pub fn dmi_is_match(modalias: &str, dmi_pattern: &str) -> Result<bool, QuirkError> {
+    let regex = Regex::new(dmi_pattern).context(RegexSnafu {
+        regex: dmi_pattern.to_string(),
+    })?;
+
+    let is_match = regex.is_match(modalias).context(RegexSnafu {
+        regex: dmi_pattern.to_string(),
+    })?;
+
+    if !is_match {
+        debug!("{} and {} not match", dmi_pattern, modalias);
+        return Ok(false);
+    }
+
+    Ok(true)
 }
 
 fn modify_command_path(config: &mut QuirkConfig, path: &Path) {
