@@ -442,11 +442,11 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
 }
 
 fn generate_gpt_random_uuid() -> [u8; 16] {
-    rand::thread_rng().gen()
+    rand::rng().random()
 }
 
 fn mbr_disk_signature() -> [u8; 4] {
-    rand::thread_rng().gen()
+    rand::rng().random()
 }
 
 #[cfg(debug_assertions)]

@@ -15,8 +15,8 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tempfile = "3.13.0"
 ctrlc = { version = "3.4.5", features = ["termination"] }
-sysinfo = "0.33.0"
-rustix = { version = "0.38.37", features = ["process"] }
+sysinfo = "0.34"
+rustix = { version = "1", features = ["process"] }
 logind-zbus = "5.1"
 tracing-appender = "0.2.3"
 
