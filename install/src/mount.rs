@@ -51,7 +51,7 @@ fn mount_inner<P: AsRef<Path>>(
         target,
         fs_type.unwrap_or(""),
         flag,
-        "",
+        None,
     )
 }
 
