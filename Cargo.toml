@@ -24,7 +24,7 @@ disk = { path = "./disk" }
 install = { path = "./install" }
 
 [workspace]
-members = ["disk", "install"]
+members = ["disk", "install", "quirk"]
 
 [dev-dependencies]
 clap = { version =  "4.5.20", features = ["derive"] }
