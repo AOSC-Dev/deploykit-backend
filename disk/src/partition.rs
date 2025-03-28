@@ -262,8 +262,7 @@ pub fn auto_create_partitions_gpt(
             err: e,
         })?;
 
-    let sector_size = gptman::linux::get_sector_size(&mut f)
-        .map_err(PartitionError::GetTable)?;
+    let sector_size = gptman::linux::get_sector_size(&mut f).map_err(PartitionError::GetTable)?;
 
     clear_start_sector(&mut f, sector_size)?;
 
@@ -382,8 +381,7 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
             err: e,
         })?;
 
-    let sector_size = gptman::linux::get_sector_size(&mut f)
-        .map_err(PartitionError::GetTable)?;
+    let sector_size = gptman::linux::get_sector_size(&mut f).map_err(PartitionError::GetTable)?;
 
     clear_start_sector(&mut f, sector_size)?;
 
