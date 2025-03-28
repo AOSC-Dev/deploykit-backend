@@ -1,6 +1,8 @@
 use crate::partition::get_partition_table_type;
 use std::{
-    fmt::Display, io, path::{Path, PathBuf}
+    fmt::Display,
+    io,
+    path::{Path, PathBuf},
 };
 
 use gptman::linux::BlockError;
@@ -11,7 +13,7 @@ use thiserror::Error;
 pub mod devices;
 pub mod partition;
 
-pub use disk_types;
+pub use partition_identity;
 
 #[derive(Debug, Error)]
 pub enum PartitionError {

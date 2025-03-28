@@ -11,7 +11,6 @@ libparted-sys = "0.3"
 tracing = "0.1"
 fancy-regex = "0.14"
 thiserror = "2.0"
-disk-types = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 gptman = "1.1"
 mbrman = "0.5"
@@ -19,3 +18,4 @@ rand = "0.8"
 uuid = { version = "1.7", features = ["macro-diagnostics"] }
 rustix = { version = "0.38", features = ["process", "fs", "mount"] }
 snafu = "0.8"
+partition-identity = "0.3.0"

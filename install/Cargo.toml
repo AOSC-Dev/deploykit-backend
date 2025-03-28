@@ -12,7 +12,6 @@ rustix = { version = "0.38.37", features = ["process", "fs", "mount", "system"] 
 tracing = "0.1.40"
 disk = { path = "../disk" }
 libc = "0.2.159"
-fstab-generate = "0.1.2"
 reqwest = "0.12.8"
 tokio = { version = "1.40.0", features = ["rt-multi-thread", "fs"] }
 sha2 = "0.10.8"
