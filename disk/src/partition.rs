@@ -23,6 +23,7 @@ pub struct DkPartition {
     pub parent_path: Option<PathBuf>,
     pub fs_type: Option<String>,
     pub size: u64,
+    pub os: Option<String>,
 }
 
 const SUPPORT_PARTITION_TYPE: &[&str] = &["primary", "logical"];
@@ -201,12 +202,22 @@ pub fn list_partitions(device_path: PathBuf) -> Vec<DkPartition> {
                 };
 
                 if SUPPORT_PARTITION_TYPE.contains(&part.type_get_name()) {
-                    partitions.push(DkPartition {
+                    let part = DkPartition {
                         path: part.get_path().map(|path| path.to_owned()),
                         parent_path: Some(device_path.clone()),
                         size: sector_size * part_length,
+                        os: if let Some((path, fs)) = part.get_path().zip(fs_type.as_ref()) {
+                            os_detect::detect_os_from_device(path, fs.as_str())
+                                .map(|os| os.name().to_string())
+                        } else {
+                            None
+                        },
                         fs_type,
-                    });
+                    };
+
+                    debug!("Find partition: {:?}", part);
+
+                    partitions.push(part);
                 }
             }
         }
@@ -240,6 +251,7 @@ pub fn find_esp_partition(device_path: &Path) -> Result<DkPartition, PartitionEr
                     parent_path: None,
                     size: 0,
                     fs_type,
+                    os: None,
                 });
             }
         }
@@ -321,6 +333,7 @@ pub fn auto_create_partitions_gpt(
                     ..=0 => 0,
                     x @ 1.. => x as u64 * sector_size,
                 },
+                os: None,
             };
 
             format_partition(&e)?;
@@ -337,6 +350,7 @@ pub fn auto_create_partitions_gpt(
                 ..=0 => 0,
                 x @ 1.. => x as u64 * sector_size,
             },
+            os: None,
         };
 
         format_partition(&s)?;
@@ -434,6 +448,7 @@ pub fn auto_create_partitions_mbr(device_path: &Path) -> Result<DkPartition, Par
             ..=0 => 0,
             x @ 1.. => x as u64 * sector_size as u64,
         },
+        os: None,
     };
 
     format_partition(&system)?;
@@ -566,6 +581,7 @@ pub fn all_esp_partitions() -> Result<Vec<DkPartition>, PartitionError> {
                             ..=0 => 0,
                             x @ 1.. => x as u64 * sector_size,
                         },
+                        os: None,
                     });
                 }
             }
