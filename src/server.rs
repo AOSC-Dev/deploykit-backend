@@ -539,6 +539,7 @@ fn set_config_inner(
                     parent_path: Some(PathBuf::from("/dev/loop30")),
                     fs_type: Some("ext4".to_string()),
                     size: 50 * 1024 * 1024 * 1024,
+                    os: None,
                 })));
                 Ok(())
             }
@@ -576,6 +577,7 @@ fn set_config_inner(
                     parent_path: Some(PathBuf::from("/dev/loop30")),
                     fs_type: Some("vfat".to_string()),
                     size: 512 * 1024 * 1024,
+                    os: None,
                 })));
             }
 
