@@ -19,3 +19,4 @@ uuid = { version = "1.7", features = ["macro-diagnostics"] }
 rustix = { version = "1", features = ["process", "fs", "mount"] }
 snafu = "0.8"
 partition-identity = "0.3.0"
+os-detect = { version = "0.2", package = "os-detect-aosc" }
