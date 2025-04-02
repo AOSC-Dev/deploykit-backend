@@ -1995,6 +1995,7 @@ dependencies = [
  "faster-hex 0.10.0",
  "libc",
  "num_enum",
+ "quirk",
  "reqwest",
  "rustix 1.0.3",
  "serde",
@@ -2650,6 +2651,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "quirk"
+version = "0.1.0"
+dependencies = [
+ "fancy-regex",
+ "glob",
+ "serde",
+ "snafu",
+ "toml",
+ "tracing",
+ "walkdir",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2997,6 +3011,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_spanned"
+version = "0.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87607cb1398ed59d48732e575a4c28a7a8ebf2454b964fe3f224f2afc07909e1"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -3418,10 +3441,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml"
+version = "0.8.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1ed1f98e3fdc28d6d910e6737ae6ab1a93bf1985935a1193e68f93eeb68d24e"
+dependencies = [
+ "serde",
+ "serde_spanned",
+ "toml_datetime",
+ "toml_edit",
+]
+
+[[package]]
 name = "toml_datetime"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0dd7358ecb8fc2f8d014bf86f6f638ce72ba252a2c3a2572f2a795f1d23efb41"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "toml_edit"
@@ -3430,6 +3468,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17b4795ff5edd201c7cd6dca065ae59972ce77d1b80fa0a84d94950ece7d1474"
 dependencies = [
  "indexmap",
+ "serde",
+ "serde_spanned",
  "toml_datetime",
  "winnow 0.7.4",
 ]
