@@ -17,7 +17,7 @@ pub enum SetFullNameError {
     #[snafu(display("/etc/passwd is broken"))]
     BrokenPassswd,
     #[snafu(display("Failed to file user name in /etc/passwd: {username}"))]
-    InvaildUsername { username: String },
+    InvalidUsername { username: String },
 }
 
 #[derive(Debug, Snafu)]
@@ -92,7 +92,7 @@ fn set_full_name(
 
     ensure!(
         is_set,
-        InvaildUsernameSnafu {
+        InvalidUsernameSnafu {
             username: username.to_string()
         }
     );

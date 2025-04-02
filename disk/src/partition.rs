@@ -67,7 +67,7 @@ pub fn auto_create_partitions(
 ) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
     // 处理 lvm 的情况
     if is_lvm_device(dev_path)? {
-        remove_all_lvm_devive()?;
+        remove_all_lvm_device()?;
     }
 
     if is_efi_booted() {
@@ -78,7 +78,7 @@ pub fn auto_create_partitions(
     Ok((None, auto_create_partitions_mbr(dev_path)?))
 }
 
-fn remove_all_lvm_devive() -> Result<(), PartitionError> {
+fn remove_all_lvm_device() -> Result<(), PartitionError> {
     let output = Command::new("dmsetup")
         .arg("ls")
         .output()

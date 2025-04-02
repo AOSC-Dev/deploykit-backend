@@ -545,7 +545,7 @@ impl InstallConfig {
                 Ok(v) if v => stage.get_next_stage(),
                 Ok(_) => break,
                 Err(e) => {
-                    error!("Error occured in step {stage}: {e:?}");
+                    error!("Error occurred in step {stage}: {e:?}");
 
                     sync();
 

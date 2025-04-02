@@ -31,13 +31,13 @@ pub enum PartitionError {
     FormatPartition(std::io::Error),
     #[error("Failed to find esp partition: {path}")]
     FindEspPartition { path: String, err: std::io::Error },
-    #[error("{path}, unsupport combo: {table} partition table and {bootmode} boot mode")]
+    #[error("{path}, unsupported combo: {table} partition table and {bootmode} boot mode")]
     WrongCombo {
         table: Table,
         bootmode: BootMode,
         path: String,
     },
-    #[error("Unsupport partition table: {0}")]
+    #[error("Unsupported partition table: {0}")]
     UnsupportedTable(String),
     #[error(transparent)]
     GptMan(#[from] gptman::Error),
@@ -145,7 +145,7 @@ pub fn is_efi_booted() -> bool {
 
 #[derive(Debug, Snafu)]
 pub enum CombineError {
-    #[snafu(display("{} has unsupport combo: {table} partition table and {bootmode} boot mode", path.display()))]
+    #[snafu(display("{} has unsupported combine: {table} partition table and {bootmode} boot mode", path.display()))]
     WrongCombine {
         table: Table,
         bootmode: BootMode,

@@ -57,7 +57,7 @@ impl fmt::Display for FileSystem {
 
 #[derive(Debug, Snafu)]
 pub enum GenfstabError {
-    #[snafu(display("Unsupport filesystem: {fs_type}"))]
+    #[snafu(display("Unsupported filesystem: {fs_type}"))]
     UnsupportedFileSystem { fs_type: String },
     #[snafu(display("Partition {} has no UUID", path.display()))]
     UUID { path: PathBuf },
