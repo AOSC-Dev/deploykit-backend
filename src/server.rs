@@ -627,8 +627,7 @@ fn start_install_inner(
     let temp_dir = tempfile::tempdir()
         .map_err(|e| InstallErr::CreateTempDir { source: e })
         .map_err(|e| DkError::from(&e))?
-        .into_path()
-        .to_path_buf();
+        .keep();
 
     let tmp_dir = Arc::new(temp_dir);
     let tmp_dir_clone2 = tmp_dir.clone();
