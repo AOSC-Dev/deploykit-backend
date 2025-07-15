@@ -123,8 +123,7 @@ pub(crate) fn rsync_system(
         .spawn()
         .map_err(|e| RunCmdError::Exec {
             cmd: format!(
-                "rsync -a -H -A -X -S -W --numeric-ids --info=progress2 --no-i-r {} {}",
-                from, to
+                "rsync -a -H -A -X -S -W --numeric-ids --info=progress2 --no-i-r {from} {to}"
             ),
             source: e,
         })?;
@@ -207,10 +206,7 @@ pub(crate) fn rsync_system(
     }
 
     let rsync_finish = child.wait().map_err(|e| RunCmdError::Exec {
-        cmd: format!(
-            "rsync -a -H -A -X -S -W --info=progress2 --numeric-ids --no-i-r {} {}",
-            from, to
-        ),
+        cmd: format!("rsync -a -H -A -X -S -W --info=progress2 --numeric-ids --no-i-r {from} {to}"),
         source: e,
     })?;
 

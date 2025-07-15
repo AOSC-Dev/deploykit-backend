@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use disk::CombineError;
 use install::{
+    ConfigureSystemError, InstallErr, InstallSquashfsError, MountError, PostInstallationError,
+    SetupGenfstabError, SetupPartitionError,
     chroot::ChrootError,
     download::DownloadError,
     genfstab::GenfstabError,
@@ -12,11 +14,9 @@ use install::{
     user::{AddUserError, SetFullNameError},
     utils::RunCmdError,
     zoneinfo::SetZoneinfoError,
-    ConfigureSystemError, InstallErr, InstallSquashfsError, MountError, PostInstallationError,
-    SetupGenfstabError, SetupPartitionError,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DkError {

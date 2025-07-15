@@ -2,18 +2,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Parser;
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::time::sleep;
 use tracing::info;
 use tracing::level_filters::LevelFilter;
+use tracing_subscriber::Layer;
 use tracing_subscriber::fmt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt};
 use zbus::Result as zResult;
-use zbus::{proxy, Connection};
+use zbus::{Connection, proxy};
 
 #[derive(Debug, Deserialize)]
 struct Dbus {
@@ -229,10 +229,10 @@ async fn main() -> Result<()> {
         loop {
             match Dbus::get_progress(&proxy_clone).await {
                 Ok(progress) => {
-                    println!("Progress: {:?}", progress);
+                    println!("Progress: {progress:?}");
                 }
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Error: {e}");
                     break;
                 }
             }
@@ -242,7 +242,7 @@ async fn main() -> Result<()> {
 
     let res = Dbus::start_install(&proxy).await?;
 
-    println!("{:?}", res);
+    println!("{res:?}");
 
     t.await?;
 

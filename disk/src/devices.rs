@@ -63,7 +63,7 @@ fn device_is_match(path: &Path, pattern: &str) -> bool {
             path.display()
                 .to_string()
                 .split('/')
-                .last()
+                .next_back()
                 .and_then(|dev| x.is_match(dev).ok())
         })
         .unwrap_or(false)

@@ -3,31 +3,31 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
     sync::{
-        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
     thread::{self, JoinHandle},
     time::Duration,
 };
 
 use disk::{
+    PartitionError,
     devices::{is_root_device, list_devices},
     is_efi_booted,
     partition::{
-        self, all_esp_partitions, auto_create_partitions, find_root_mount_point, is_lvm_device,
-        list_partitions, DkPartition,
+        self, DkPartition, all_esp_partitions, auto_create_partitions, find_root_mount_point,
+        is_lvm_device, list_partitions,
     },
-    PartitionError,
 };
 use install::{
+    DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User,
     chroot::{escape_chroot, get_dir_fd},
     mount::{remove_files_mounts, sync_disk, umount_root_path},
     swap::{get_recommend_swap_size, swapoff},
-    sync_and_reboot, umount_all, DownloadType, InstallConfig, InstallConfigPrepare, InstallErr,
-    SwapFile, User,
+    sync_and_reboot, umount_all,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sysinfo::System;
 use tracing::{error, info, warn};
 use zbus::interface;
@@ -133,7 +133,7 @@ pub enum AutoPartitionProgress {
     Pending,
     Working,
     Finish {
-        res: Result<(Option<DkPartition>, DkPartition), PartitionError>,
+        res: Box<Result<(Option<DkPartition>, DkPartition), PartitionError>>,
     },
 }
 
@@ -150,15 +150,13 @@ impl DeploykitServer {
                 "user" => Message::check_is_set(field, &self.config.user),
                 "hostname" => Message::check_is_set(field, &self.config.hostname),
                 "rtc_as_localtime" => Message::ok(&self.config.rtc_as_localtime.to_string()),
-                "target_partition" => Message::check_is_set(field, {
+                "target_partition" => {
                     let lock = self.config.target_partition.lock().unwrap();
-
-                    &lock.clone()
-                }),
+                    Message::check_is_set(field, &*lock)
+                }
                 "efi_partition" => {
                     let lock = self.config.efi_partition.lock().unwrap();
-
-                    Message::check_is_set(field, &lock.clone())
+                    Message::check_is_set(field, &*lock)
                 }
                 "swapfile" => Message::ok(&self.config.swapfile),
                 _ => {
@@ -273,14 +271,18 @@ impl DeploykitServer {
 
                     {
                         let mut lock = auto_partition_progress.lock().unwrap();
-                        *lock = AutoPartitionProgress::Finish { res: Ok((efi, p)) };
+                        *lock = AutoPartitionProgress::Finish {
+                            res: Box::new(Ok((efi, p))),
+                        };
                     }
                 }
                 Err(e) => {
                     error!("Failed to auto partition: {e}");
                     {
                         let mut lock = auto_partition_progress.lock().unwrap();
-                        *lock = AutoPartitionProgress::Finish { res: Err(e) };
+                        *lock = AutoPartitionProgress::Finish {
+                            res: Box::new(Err(e)),
+                        };
                     }
                 }
             }
@@ -293,7 +295,7 @@ impl DeploykitServer {
         let ps = self.auto_partition_progress.lock().unwrap();
 
         match &*ps {
-            AutoPartitionProgress::Finish { res } => match res {
+            AutoPartitionProgress::Finish { res } => match &**res {
                 Ok(_) => Message::ok(&*ps),
                 Err(e) => Message::err(DkError {
                     message: e.to_string(),

@@ -106,10 +106,7 @@ fn remove_all_lvm_device() -> Result<(), PartitionError> {
 
             if !remove.status.success() {
                 return Err(PartitionError::DmSetup {
-                    source: io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("Failed to remove lvm device: {}", lvm_name),
-                    ),
+                    source: io::Error::other(format!("Failed to remove lvm device: {lvm_name}")),
                 });
             }
         }
@@ -169,8 +166,7 @@ pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
     let output = cmd.output().map_err(PartitionError::FormatPartition)?;
 
     if !output.status.success() {
-        return Err(PartitionError::FormatPartition(io::Error::new(
-            io::ErrorKind::Other,
+        return Err(PartitionError::FormatPartition(io::Error::other(
             String::from_utf8_lossy(&output.stderr),
         )));
     }
@@ -244,7 +240,7 @@ pub fn find_esp_partition(device_path: &Path) -> Result<DkPartition, PartitionEr
                     .get_path()
                     .ok_or_else(|| PartitionError::FindEspPartition {
                         path: device_path.display().to_string(),
-                        err: io::Error::new(io::ErrorKind::Other, "Unexcept error"),
+                        err: io::Error::other("Unexcept error"),
                     })?;
                 return Ok(DkPartition {
                     path: Some(path.to_owned()),
@@ -259,7 +255,7 @@ pub fn find_esp_partition(device_path: &Path) -> Result<DkPartition, PartitionEr
 
     Err(PartitionError::FindEspPartition {
         path: device_path.display().to_string(),
-        err: io::Error::new(io::ErrorKind::Other, "Unexcept error"),
+        err: io::Error::other("Unexcept error"),
     })
 }
 

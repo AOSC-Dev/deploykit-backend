@@ -1,7 +1,7 @@
 use eyre::Result;
 use logind_zbus::manager::{InhibitType, ManagerProxy};
 use tracing::info;
-use zbus::{zvariant::OwnedFd, Connection};
+use zbus::{Connection, zvariant::OwnedFd};
 
 pub async fn take_wake_lock(conn: &Connection) -> Result<Vec<OwnedFd>> {
     let proxy = ManagerProxy::new(conn).await?;

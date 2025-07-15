@@ -6,8 +6,8 @@ use take_wake_lock::take_wake_lock;
 use tracing::level_filters::LevelFilter;
 use tracing::{debug, info};
 use tracing_subscriber::fmt;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
-use zbus::{connection, Connection};
+use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use zbus::{Connection, connection};
 
 mod error;
 mod server;
