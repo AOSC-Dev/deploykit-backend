@@ -9,11 +9,11 @@ edition = "2021"
 libparted = "0.1"
 libparted-sys = "0.3"
 tracing = "0.1"
-fancy-regex = "0.14"
+fancy-regex = "0.15"
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }
-gptman = "1.1"
-mbrman = "0.5"
+gptman = "2"
+mbrman = "0.6"
 rand = "0.9"
 uuid = { version = "1.7", features = ["macro-diagnostics"] }
 rustix = { version = "1", features = ["process", "fs", "mount"] }
