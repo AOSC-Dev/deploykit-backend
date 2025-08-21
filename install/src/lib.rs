@@ -61,7 +61,7 @@ mod dracut;
 mod extract;
 pub mod genfstab;
 pub mod grub;
-mod hostname;
+pub mod hostname;
 pub mod locale;
 pub mod mount;
 mod ssh;
