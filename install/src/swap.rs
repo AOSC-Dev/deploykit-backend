@@ -56,7 +56,7 @@ pub fn get_recommend_swap_size(mem: u64) -> f64 {
 }
 
 /// Create swapfile
-pub(crate) fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), SwapFileError> {
+pub fn create_swapfile(size: f64, tempdir: &Path) -> Result<(), SwapFileError> {
     let swap_path = tempdir.join("swapfile");
 
     info!("Creating swapfile");

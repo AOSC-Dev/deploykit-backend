@@ -18,7 +18,7 @@ pub enum SetZoneinfoError {
 
 /// Sets zoneinfo in the guest environment
 /// Must be used in a chroot context
-pub(crate) fn set_zoneinfo(zone: &str) -> Result<(), SetZoneinfoError> {
+pub fn set_zoneinfo(zone: &str) -> Result<(), SetZoneinfoError> {
     if Path::new("/etc/localtime").exists() {
         std::fs::remove_file("/etc/localtime").context(RemoveLocaltimeFileSnafu)?;
     }

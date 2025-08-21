@@ -18,7 +18,7 @@ pub enum SetHwclockError {
 
 /// Sets locale in the guest environment
 /// Must be used in a chroot context
-pub(crate) fn set_locale(locale: &str) -> Result<(), io::Error> {
+pub fn set_locale(locale: &str) -> Result<(), io::Error> {
     let mut f = File::create("/etc/locale.conf")?;
     f.write_all(b"LANG=")?;
     f.write_all(format!("{locale}\n").as_bytes())?;
@@ -28,7 +28,7 @@ pub(crate) fn set_locale(locale: &str) -> Result<(), io::Error> {
 
 /// Sets utc/rtc time in the guest environment
 /// Must be used in a chroot context
-pub(crate) fn set_hwclock_tc(utc: bool) -> Result<(), SetHwclockError> {
+pub fn set_hwclock_tc(utc: bool) -> Result<(), SetHwclockError> {
     let adjtime_file = std::fs::File::open("/etc/adjtime");
     let status_is_rtc = if let Ok(adjtime_file) = adjtime_file {
         let lines = BufReader::new(adjtime_file)
