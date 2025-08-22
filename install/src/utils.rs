@@ -16,7 +16,7 @@ pub enum RunCmdError {
     },
 }
 
-pub(crate) fn run_command<I, S, E, K, V>(command: &str, args: I, env: E) -> Result<(), RunCmdError>
+pub fn run_command<I, S, E, K, V>(command: &str, args: I, env: E) -> Result<(), RunCmdError>
 where
     I: IntoIterator<Item = S> + Debug,
     S: AsRef<OsStr>,
