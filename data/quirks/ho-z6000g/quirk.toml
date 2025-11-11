@@ -3,5 +3,4 @@ type = dmi
 dmi_pattern = "dmi:*pnZGO31:*rnZGO31:*"
 
 [quirk]
-command = "/usr/share/deploykit-backend/quirks/ho-z6000g/grub.bash"
 skip_stages = ["InstallGrub"]

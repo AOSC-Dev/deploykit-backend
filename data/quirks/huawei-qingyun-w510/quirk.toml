@@ -3,5 +3,4 @@ type = dmi
 dmi_pattern = "dmi:*svnHUAWEI:*pnHUAWEIPGU-WBY0:*"
 
 [quirk]
-command = "/usr/share/deploykit-backend/quirks/huawei-qingyun-w510/grub.bash"
 skip_stages = ["InstallGrub"]
