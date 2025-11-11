@@ -35,7 +35,7 @@ pub struct QuirkConfigInner {
 
 impl QuirkConfigInner {
     fn default_command() -> String {
-        "quick.bash".to_string()
+        "quirk.bash".to_string()
     }
 }
 
@@ -72,7 +72,7 @@ fn get_quirk_configs(dir: impl AsRef<Path>) -> Vec<(QuirkConfig, PathBuf)> {
         .into_iter()
         .flatten()
     {
-        if i.file_name() != "quick.toml" || !i.path().is_file() {
+        if i.file_name() != "quirk.toml" || !i.path().is_file() {
             continue;
         }
 
@@ -117,13 +117,13 @@ pub fn get_matches_quirk(dir: impl AsRef<Path>) -> Vec<QuirkConfigInner> {
                 let mut match_paths = match glob(path_pattern) {
                     Ok(paths) => paths,
                     Err(e) => {
-                        error!("Pattern {} is not illegal: {}", path_pattern, e);
+                        error!("Not a valid pattern '{}': {}", path_pattern, e);
                         continue;
                     }
                 };
 
                 if match_paths.next().is_none() {
-                    debug!("{} glob not match path anything.", path_pattern);
+                    debug!("Pattern '{}' didn't match anything.", path_pattern);
                     continue;
                 }
 
