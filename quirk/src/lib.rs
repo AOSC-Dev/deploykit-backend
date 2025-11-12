@@ -153,9 +153,27 @@ pub fn dmi_is_match(modalias: &str, dmi_pattern: &str) -> Result<bool, QuirkErro
     Ok(true)
 }
 
+pub fn dt_compatible_matches(dt_compatible: &Vec<String>, pattern: &str) -> Result<bool, QuirkError> {
+    let regex = Regex::new(pattern).context(RegexSnafu {
+        regex: pattern.to_string(),
+    })?;
+
+    let mut result = false;
+    for element in dt_compatible {
+        if regex.is_match(&element).context(RegexSnafu {
+            regex: pattern.to_string()
+        })? {
+            result = true;
+            break;
+        }
+    }
+    return Ok(result)
+}
+
 fn modify_command_path(config: &mut QuirkConfig, path: &Path) {
     if !Path::new(&config.quirk.command).is_absolute() {
-        config.quirk.command = path
+        let dirname = path.parent().unwrap();
+        config.quirk.command = dirname
             .join(&config.quirk.command)
             .to_string_lossy()
             .to_string()
