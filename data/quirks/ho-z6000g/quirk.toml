@@ -1,6 +1,6 @@
 [model]
-type = dmi
-dmi_pattern = "dmi:*pnZGO31:*rnZGO31:*"
+type = "dmi"
+dmi_pattern = "dmi:.*pnZGO31:.*rnZGO31:.*"
 
 [quirk]
 skip_stages = ["InstallGrub"]

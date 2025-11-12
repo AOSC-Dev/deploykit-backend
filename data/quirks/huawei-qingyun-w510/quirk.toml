@@ -1,6 +1,6 @@
 [model]
-type = dmi
-dmi_pattern = "dmi:*svnHUAWEI:*pnHUAWEIPGU-WBY0:*"
+type = "dmi"
+dmi_pattern = "dmi:.*svnHUAWEI:.*pnHUAWEIPGU-WBY0:.*"
 
 [quirk]
 skip_stages = ["InstallGrub"]
