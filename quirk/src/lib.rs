@@ -10,6 +10,9 @@ use snafu::{ResultExt, Snafu};
 use tracing::{debug, error};
 use walkdir::WalkDir;
 
+const DMI_MODALIAS: &str = "/sys/class/dmi/id/modalias";
+const DT_COMPATIBLE: &str = "/sys/firmware/devicetree/base/compatible";
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QuirkConfig {
     pub model: QuirkConfigModel,
@@ -24,6 +27,8 @@ pub enum QuirkConfigModel {
     Dmi { dmi_pattern: String },
     #[serde(rename = "path")]
     Path { path_pattern: String },
+    #[serde(rename = "dt_compatible")]
+    DTCompatible { compatible_pattern: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -90,11 +95,17 @@ fn get_quirk_configs(dir: impl AsRef<Path>) -> Vec<(QuirkConfig, PathBuf)> {
 pub fn get_matches_quirk(dir: impl AsRef<Path>) -> Vec<QuirkConfigInner> {
     let configs = get_quirk_configs(dir);
     let mut matches = vec![];
+    let dt_compatible = match read_dt_compatible() {
+        Ok(v) => v,
+        Err(_) => {
+            Vec::new()
+        }
+    };
     let modalias = match read_modalias() {
         Ok(m) => m,
         Err(e) => {
-            error!("{e}");
-            return vec![];
+            error!("{}", e);
+            String::new()
         }
     };
 
@@ -127,6 +138,19 @@ pub fn get_matches_quirk(dir: impl AsRef<Path>) -> Vec<QuirkConfigInner> {
                     continue;
                 }
 
+                modify_command_path(&mut config, &path);
+                matches.push(config.quirk);
+            }
+            QuirkConfigModel::DTCompatible { ref compatible_pattern } => {
+                match dt_compatible_matches(&dt_compatible, &compatible_pattern) {
+                    Ok(true) => {},
+                    Ok(false) => continue,
+                    Err(e) => {
+                        // It is absent on most platforms this installer supports
+                        error!("{}", e);
+                        continue;
+                    }
+                }
                 modify_command_path(&mut config, &path);
                 matches.push(config.quirk);
             }
@@ -181,14 +205,34 @@ fn modify_command_path(config: &mut QuirkConfig, path: &Path) {
 }
 
 fn read_modalias() -> Result<String, QuirkError> {
-    let mut s = fs::read_to_string("/sys/class/dmi/id/modalias").context(ReadSnafu {
-        path: PathBuf::from("/sys/class/dmi/id/modalias"),
+    let mut s = fs::read_to_string(DMI_MODALIAS).context(ReadSnafu {
+        path: PathBuf::from(DMI_MODALIAS),
     })?;
 
     let trimmed = s.trim_end();
     s.truncate(trimmed.len());
 
     Ok(s)
+}
+
+fn read_dt_compatible() -> Result<Vec<String>, QuirkError> {
+    let s = fs::read_to_string(DT_COMPATIBLE);
+    let s = match s {
+        Ok(s) => s,
+        Err(e) => {
+            // They simply don't exist, which is not a problem.
+            // Return an empty one.
+            if e.kind() == std::io::ErrorKind::NotFound {
+                return Ok(vec![]);
+            }
+            // Don't really know how to properly do this ...
+            return Err(QuirkError::Read { source: e, path: PathBuf::from(DT_COMPATIBLE) });
+        }
+    };
+
+    // NOTE: elemnts of arrays in DT are null separated
+    let vec = s.split('\0').map(|x| x.to_string()).collect::<Vec<_>>();
+    Ok(vec)
 }
 
 fn read_quirk_config(i: &Path) -> Result<QuirkConfig, QuirkError> {
