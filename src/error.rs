@@ -2,18 +2,7 @@ use std::fmt::Display;
 
 use disk::CombineError;
 use install::{
-    ConfigureSystemError, InstallErr, InstallSquashfsError, MountError, PostInstallationError,
-    SetupGenfstabError, SetupPartitionError,
-    chroot::ChrootError,
-    download::DownloadError,
-    genfstab::GenfstabError,
-    grub::RunGrubError,
-    locale::SetHwclockError,
-    mount::MountInnerError,
-    swap::SwapFileError,
-    user::{AddUserError, SetFullNameError},
-    utils::RunCmdError,
-    zoneinfo::SetZoneinfoError,
+    ConfigureSystemError, InstallErr, InstallSquashfsError, MountError, PostInstallationError, QuirksPreparationError, SetupGenfstabError, SetupPartitionError, chroot::ChrootError, download::DownloadError, genfstab::GenfstabError, grub::RunGrubError, locale::SetHwclockError, mount::MountInnerError, swap::SwapFileError, user::{AddUserError, SetFullNameError}, utils::RunCmdError, zoneinfo::SetZoneinfoError
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -205,6 +194,17 @@ impl From<&InstallErr> for DkError {
                     })
                 },
             },
+	        InstallErr::PrepareQuirks { source } => Self {
+                message: value.to_string(),
+                t: "PrepareQuirks".to_string(),
+                data: {
+                    json!({
+                        "stage": 4,
+                        "message": source.to_string(),
+                        "data": DkError::from(source)
+                    })
+                }
+	        },
             InstallErr::Chroot { source } => Self {
                 message: value.to_string(),
                 t: "Chroot".to_string(),
@@ -947,6 +947,24 @@ impl From<&RunCmdError> for DkError {
                     })
                 },
             },
+        }
+    }
+}
+
+impl From<&QuirksPreparationError> for DkError {
+    fn from(value: &QuirksPreparationError) -> Self {
+        match value {
+            QuirksPreparationError::IOError { source, src, dst } => Self {
+                message: value.to_string(),
+                t: "CopyFailed".to_string(),
+                data: {
+                    json!({
+                        "err": source.to_string(),
+                        "source": src,
+                        "dest": dst
+                    })
+                }
+            }
         }
     }
 }
