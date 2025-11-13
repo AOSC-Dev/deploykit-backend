@@ -1,16 +1,7 @@
 use std::{
-    collections::HashSet,
-    fmt::{Display, Formatter},
-    fs::{self, create_dir_all, read_dir},
-    io::{self, Write},
-    os::fd::OwnedFd,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::{
-        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
-    time::Duration,
+    collections::{HashMap, HashSet}, fmt::{Display, Formatter}, fs::{self, Permissions, create_dir_all, read_dir}, io::{self, Write}, os::{fd::OwnedFd, unix::fs::PermissionsExt}, path::{Path, PathBuf}, process::Command, sync::{
+        Arc, Mutex, atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering}
+    }, time::Duration
 };
 
 use chroot::ChrootError;
@@ -113,6 +104,8 @@ pub enum InstallErr {
     ExtractSquashfs { source: InstallSquashfsError },
     #[snafu(display("Failed to generate fstab"))]
     Genfstab { source: SetupGenfstabError },
+    #[snafu(display("Failed to copy quirks script"))]
+    PrepareQuirks { source: QuirksPreparationError },
     #[snafu(display("Failed to chroot"))]
     Chroot { source: ChrootError },
     #[snafu(display("Failed to run dracut"))]
@@ -174,6 +167,17 @@ pub enum SetupGenfstabError {
     Genfstab { source: GenfstabError },
     #[snafu(display("value is not set: {t}"))]
     ValueNotSetGenfstab { t: &'static str },
+}
+
+#[derive(Debug, Snafu)]
+pub enum QuirksPreparationError {
+    #[snafu(display("Failed to copy quirk script '{}' to '{}': {source}", src.display(), dst.display()))]
+    IOError {
+        source: std::io::Error,
+        src: PathBuf,
+        dst: PathBuf,
+    }
+
 }
 
 #[derive(Debug, Snafu)]
@@ -359,6 +363,7 @@ enum InstallationStage {
     DownloadSquashfs,
     ExtractSquashfs,
     GenerateFstab,
+    PrepareQuirks,
     Chroot,
     Dracut,
     InstallGrub,
@@ -387,6 +392,7 @@ impl Display for InstallationStage {
             Self::DownloadSquashfs => "download squashfs",
             Self::ExtractSquashfs => "extract squashfs",
             Self::GenerateFstab => "generate fstab",
+	    Self::PrepareQuirks => "prepare quirks",
             Self::Chroot => "chroot",
             Self::Dracut => "run dracut",
             Self::InstallGrub => "install grub",
@@ -412,19 +418,20 @@ impl InstallationStage {
             Self::SetupPartition => Self::DownloadSquashfs,
             Self::DownloadSquashfs => Self::ExtractSquashfs,
             Self::ExtractSquashfs => Self::GenerateFstab,
-            Self::GenerateFstab => Self::Chroot,
+            Self::GenerateFstab => Self::PrepareQuirks,
+	        Self::PrepareQuirks => Self::Chroot,
             Self::Chroot => Self::Dracut,
             Self::Dracut => Self::InstallGrub,
             Self::InstallGrub => Self::GenerateSshKey,
             Self::GenerateSshKey => Self::ConfigureSystem,
-            Self::ConfigureSystem => Self::EscapeChroot,
+            Self::ConfigureSystem => Self::Quirk,
+            Self::Quirk => Self::EscapeChroot,
             Self::EscapeChroot => Self::SwapOff,
             Self::SwapOff => Self::CopyLog,
             Self::CopyLog => Self::UmountInnerPath,
             Self::UmountInnerPath => Self::UmountEFIPath,
             Self::UmountEFIPath => Self::UmountRootPath,
-            Self::UmountRootPath => Self::Quirk,
-            Self::Quirk => Self::Done,
+            Self::UmountRootPath => Self::Done,
             Self::Done => Self::Done,
         }
     }
@@ -444,13 +451,47 @@ impl InstallConfig {
         let quirks = get_matches_quirk("/usr/share/deploykit-backend/quirks");
 
         let mut no_run = HashSet::new();
-        let mut quirk_commands = vec![];
+        let mut quirk_scripts = HashMap::<PathBuf, String>::new();
 
         for quirk in quirks {
             if let Some(skip_stages) = quirk.skip_stages {
                 no_run.extend(skip_stages);
             }
-            quirk_commands.push(quirk.command);
+            let path: PathBuf = quirk.command.into();
+            // Since it returns an array of quirks, we must ensure the script names does not
+            // collide with each other (this is definitely true since most of the quirks will
+            // just use the default name).
+            let dirname = if let Some(d) = path.parent() {
+                if let Some(n) = d.file_name() {
+                    n.to_string_lossy()
+                } else {
+                    error!("Unable to get dirname of the quirk script '{}'", path.display());
+                    continue;
+                }
+            } else {
+                error!("Unable to get dirname of the quirk script '{}'", path.display());
+                continue;
+            };
+            // It should not happen, but here we are anyways...
+            let basename = if let Some(n) = path.file_name() {
+                n
+            } else {
+                error!("Unable to get basename of the quirk script '{}'", path.display());
+                continue;
+            }.to_string_lossy();
+            let (filename, ext) = basename.split_once('.').unwrap_or((&basename, ""));
+            let transformed = format!(
+                "{}-{}{}",
+                filename,
+                dirname,
+                if ext.is_empty() {
+                    ""
+                } else {
+                    &format!(".{}", ext)
+                }
+            );
+
+            quirk_scripts.insert(path, transformed);
         }
 
         let no_run = no_run
@@ -489,6 +530,7 @@ impl InstallConfig {
                 InstallationStage::DownloadSquashfs => 2,
                 InstallationStage::ExtractSquashfs => 3,
                 InstallationStage::GenerateFstab => 4,
+                InstallationStage::PrepareQuirks => 4,
                 InstallationStage::Chroot => 4,
                 InstallationStage::Dracut => 5,
                 InstallationStage::InstallGrub => 6,
@@ -536,6 +578,9 @@ impl InstallConfig {
                 InstallationStage::GenerateFstab => self
                     .generate_fstab(&progress, &tmp_mount_path, &cancel_install)
                     .context(GenfstabSnafu),
+                InstallationStage::PrepareQuirks => self
+                    .prepare_quirks(&progress, &cancel_install, &quirk_scripts, &tmp_mount_path)
+                    .context(PrepareQuirksSnafu),
                 InstallationStage::Chroot => self
                     .chroot(&progress, &tmp_mount_path, &cancel_install)
                     .context(ChrootSnafu),
@@ -581,11 +626,14 @@ impl InstallConfig {
                     .context(PostInstallationSnafu)
                     .map(|_| true),
                 InstallationStage::Quirk => {
-                    for cmd in &quirk_commands {
-                        let out = match Command::new("bash").arg("-c").arg(cmd).output() {
+                    for (_, transformed) in &quirk_scripts {
+		    	        // We are living inside the target system.
+			            // WARNING: be careful when playing with absolute paths!
+                        let cmd = PathBuf::from("/tmp").join(transformed);
+                        let out = match Command::new("bash").arg("-c").arg(&cmd).output() {
                             Ok(out) => out,
                             Err(e) => {
-                                error!("Run {} failed: {}", cmd, e);
+                                error!("Run {} failed: {}", cmd.display(), e);
                                 continue;
                             }
                         };
@@ -593,10 +641,13 @@ impl InstallConfig {
                         if !out.status.success() {
                             error!(
                                 "Run {} failed: stderr: {}",
-                                cmd,
+                                cmd.display(),
                                 String::from_utf8_lossy(&out.stderr)
-                            )
+                            );
+                            // TODO report error.
                         }
+                        // TODO report error.
+                        std::fs::remove_file(&cmd).unwrap();
                     }
 
                     Ok(true)
@@ -786,6 +837,27 @@ impl InstallConfig {
 
         velocity.store(0, Ordering::SeqCst);
 
+        Ok(true)
+    }
+
+    fn prepare_quirks(
+        &self,
+        progress: &AtomicU8,
+        cancel_install: &AtomicBool,
+        quirk_scripts: &HashMap<PathBuf, String>,
+        root: &Arc<PathBuf>,
+    ) -> Result<bool, QuirksPreparationError> {
+        progress.store(0, Ordering::SeqCst);
+        cancel_install_exit!(cancel_install);
+
+        info!("Copying quirk scripts ...");
+        for (src, transformed) in quirk_scripts {
+            let dst = root.join("tmp").join(transformed);
+            info!("Copying '{}' -> '{}' ...", src.display(), dst.display());
+            // Whatever... error handling is way too complicated there.
+            std::fs::copy(src, &dst).map_err(|e| QuirksPreparationError::IOError { source: e, src: src.clone(), dst: dst.clone() })?;
+            std::fs::set_permissions(&dst, Permissions::from_mode(0o755)).inspect_err(|e| error!("Failed to set file permissions for '{}': {}", &dst.display(), e)).ok();
+        }
         Ok(true)
     }
 
