@@ -35,17 +35,7 @@ use utils::RunCmdError;
 use zoneinfo::SetZoneinfoError;
 
 use crate::{
-    chroot::{dive_into_guest, escape_chroot, get_dir_fd},
-    dracut::execute_dracut,
-    genfstab::write_swap_entry_to_fstab,
-    grub::execute_grub_install,
-    hostname::set_hostname,
-    locale::{set_hwclock_tc, set_locale},
-    mount::{remove_files_mounts, umount_root_path},
-    ssh::gen_ssh_key,
-    swap::{create_swapfile, get_recommend_swap_size, swapoff},
-    user::{add_new_user, passwd_set_fullname},
-    zoneinfo::set_zoneinfo,
+    chroot::{dive_into_guest, escape_chroot, get_dir_fd}, dracut::execute_dracut, genfstab::write_swap_entry_to_fstab, grub::execute_grub_install, hostname::set_hostname, locale::{set_hwclock_tc, set_locale}, mount::{remove_files_mounts, umount_root_path}, ssh::gen_ssh_key, swap::{create_swapfile, get_recommend_swap_size, swapoff}, user::{add_new_user, passwd_set_fullname}, utils::run_command, zoneinfo::set_zoneinfo
 };
 
 pub mod chroot;
@@ -120,6 +110,16 @@ pub enum InstallErr {
     EscapeChroot { source: ChrootError },
     #[snafu(display("Failed to post installation"))]
     PostInstallation { source: PostInstallationError },
+    #[snafu(display("Failed to execute quirk script"))]
+    Quirk { source: RunCmdError },
+}
+
+// FIXME: Manually implementing From<RunCmdError> for InstallErr,
+//        shouldn't Snafu have done this automatically?
+impl From<RunCmdError> for InstallErr {
+    fn from(value: RunCmdError) -> Self {
+        Self::Quirk{ source: value }
+    }
 }
 
 #[derive(Debug, Snafu)]
@@ -630,28 +630,13 @@ impl InstallConfig {
 		    	        // We are living inside the target system.
 			            // WARNING: be careful when playing with absolute paths!
                         let cmd = PathBuf::from("/tmp").join(transformed);
-                        let out = match Command::new("bash").arg("-c").arg(&cmd).output() {
-                            Ok(out) => out,
-                            Err(e) => {
-                                error!("Run {} failed: {}", cmd.display(), e);
-                                continue;
-                            }
-                        };
+                        run_command("bash", ["-xc", &cmd.to_string_lossy()], vec![] as Vec<(String, String)>)?;
 
-                        if !out.status.success() {
-                            error!(
-                                "Run {} failed: stderr: {}",
-                                cmd.display(),
-                                String::from_utf8_lossy(&out.stderr)
-                            );
-                            // TODO report error.
-                        }
-                        // TODO report error.
                         std::fs::remove_file(&cmd).unwrap();
                     }
 
                     Ok(true)
-                }
+                }.context(QuirkSnafu).map(|_| true),
                 InstallationStage::Done => break,
             };
 
