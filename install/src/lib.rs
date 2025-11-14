@@ -657,7 +657,7 @@ impl InstallConfig {
                             vec![] as Vec<(String, String)>,
                         )?;
 
-                        std::fs::remove_file(&cmd).unwrap();
+                        std::fs::remove_file(&cmd).ok();
                     }
 
                     Ok(true)
