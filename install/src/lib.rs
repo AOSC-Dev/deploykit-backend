@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use swap::SwapFileError;
 use sysinfo::System;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use unsquashfs_wrapper::UnsquashfsError;
 use user::{AddUserError, SetFullNameError};
 use utils::RunCmdError;
@@ -657,7 +657,9 @@ impl InstallConfig {
                             vec![] as Vec<(String, String)>,
                         )?;
 
-                        std::fs::remove_file(&cmd).ok();
+                        std::fs::remove_file(&cmd)
+                            .map_err(|e| warn!("Unable to remove quirk script: {}", e))
+                            .ok();
                     }
 
                     Ok(true)
