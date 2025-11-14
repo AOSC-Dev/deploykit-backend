@@ -1,6 +1,6 @@
 use std::{env::args, process::exit};
 
-use quirk::{dmi_is_match, QuirkError};
+use quirk::{QuirkError, dmi_is_match};
 
 fn main() -> Result<(), QuirkError> {
     let args = args().skip(1).collect::<Vec<_>>();

@@ -97,9 +97,7 @@ pub fn get_matches_quirk(dir: impl AsRef<Path>) -> Vec<QuirkConfigInner> {
     let mut matches = vec![];
     let dt_compatible = match read_dt_compatible() {
         Ok(v) => v,
-        Err(_) => {
-            Vec::new()
-        }
+        Err(_) => Vec::new(),
     };
     let modalias = match read_modalias() {
         Ok(m) => m,
@@ -141,9 +139,11 @@ pub fn get_matches_quirk(dir: impl AsRef<Path>) -> Vec<QuirkConfigInner> {
                 modify_command_path(&mut config, &path);
                 matches.push(config.quirk);
             }
-            QuirkConfigModel::DTCompatible { ref compatible_pattern } => {
+            QuirkConfigModel::DTCompatible {
+                ref compatible_pattern,
+            } => {
                 match dt_compatible_matches(&dt_compatible, &compatible_pattern) {
-                    Ok(true) => {},
+                    Ok(true) => {}
                     Ok(false) => continue,
                     Err(e) => {
                         // It is absent on most platforms this installer supports
@@ -177,7 +177,10 @@ pub fn dmi_is_match(modalias: &str, dmi_pattern: &str) -> Result<bool, QuirkErro
     Ok(true)
 }
 
-pub fn dt_compatible_matches(dt_compatible: &Vec<String>, pattern: &str) -> Result<bool, QuirkError> {
+pub fn dt_compatible_matches(
+    dt_compatible: &Vec<String>,
+    pattern: &str,
+) -> Result<bool, QuirkError> {
     let regex = Regex::new(pattern).context(RegexSnafu {
         regex: pattern.to_string(),
     })?;
@@ -185,13 +188,13 @@ pub fn dt_compatible_matches(dt_compatible: &Vec<String>, pattern: &str) -> Resu
     let mut result = false;
     for element in dt_compatible {
         if regex.is_match(&element).context(RegexSnafu {
-            regex: pattern.to_string()
+            regex: pattern.to_string(),
         })? {
             result = true;
             break;
         }
     }
-    return Ok(result)
+    return Ok(result);
 }
 
 fn modify_command_path(config: &mut QuirkConfig, path: &Path) {
@@ -226,7 +229,10 @@ fn read_dt_compatible() -> Result<Vec<String>, QuirkError> {
                 return Ok(vec![]);
             }
             // Don't really know how to properly do this ...
-            return Err(QuirkError::Read { source: e, path: PathBuf::from(DT_COMPATIBLE) });
+            return Err(QuirkError::Read {
+                source: e,
+                path: PathBuf::from(DT_COMPATIBLE),
+            });
         }
     };
 

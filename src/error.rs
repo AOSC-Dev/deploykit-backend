@@ -2,7 +2,18 @@ use std::fmt::Display;
 
 use disk::CombineError;
 use install::{
-    ConfigureSystemError, InstallErr, InstallSquashfsError, MountError, PostInstallationError, QuirksPreparationError, SetupGenfstabError, SetupPartitionError, chroot::ChrootError, download::DownloadError, genfstab::GenfstabError, grub::RunGrubError, locale::SetHwclockError, mount::MountInnerError, swap::SwapFileError, user::{AddUserError, SetFullNameError}, utils::RunCmdError, zoneinfo::SetZoneinfoError
+    ConfigureSystemError, InstallErr, InstallSquashfsError, MountError, PostInstallationError,
+    QuirksPreparationError, SetupGenfstabError, SetupPartitionError,
+    chroot::ChrootError,
+    download::DownloadError,
+    genfstab::GenfstabError,
+    grub::RunGrubError,
+    locale::SetHwclockError,
+    mount::MountInnerError,
+    swap::SwapFileError,
+    user::{AddUserError, SetFullNameError},
+    utils::RunCmdError,
+    zoneinfo::SetZoneinfoError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -194,7 +205,7 @@ impl From<&InstallErr> for DkError {
                     })
                 },
             },
-	        InstallErr::PrepareQuirks { source } => Self {
+            InstallErr::PrepareQuirks { source } => Self {
                 message: value.to_string(),
                 t: "PrepareQuirks".to_string(),
                 data: {
@@ -203,8 +214,8 @@ impl From<&InstallErr> for DkError {
                         "message": source.to_string(),
                         "data": DkError::from(source)
                     })
-                }
-	        },
+                },
+            },
             InstallErr::Chroot { source } => Self {
                 message: value.to_string(),
                 t: "Chroot".to_string(),
