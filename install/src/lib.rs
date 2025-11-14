@@ -658,7 +658,7 @@ impl InstallConfig {
                         )?;
 
                         std::fs::remove_file(&cmd)
-                            .map_err(|e| warn!("Unable to remove quirk script: {}", e))
+                            .inspect_err(|e| warn!("Unable to remove quirk script: {}", e))
                             .ok();
                     }
 
