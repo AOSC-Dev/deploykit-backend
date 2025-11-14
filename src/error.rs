@@ -302,6 +302,17 @@ impl From<&InstallErr> for DkError {
                     })
                 },
             },
+            InstallErr::Quirk { source } => Self {
+                message: value.to_string(),
+                t: "Quirk".to_string(),
+                data: {
+                    json!({
+                        "stage": 8,
+                        "message": source.to_string(),
+                        "data": DkError::from(source)
+                    })
+                },
+            },
         }
     }
 }
