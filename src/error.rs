@@ -965,7 +965,7 @@ impl From<&RunCmdError> for DkError {
 impl From<&QuirksPreparationError> for DkError {
     fn from(value: &QuirksPreparationError) -> Self {
         match value {
-            QuirksPreparationError::IOError { source, src, dst } => Self {
+            QuirksPreparationError::Copy { source, src, dst } => Self {
                 message: value.to_string(),
                 t: "CopyFailed".to_string(),
                 data: {
@@ -974,8 +974,17 @@ impl From<&QuirksPreparationError> for DkError {
                         "source": src,
                         "dest": dst
                     })
-                }
-            }
+                },
+            },
+            QuirksPreparationError::GetName { src } => Self {
+                message: value.to_string(),
+                t: "GetName".to_string(),
+                data: {
+                    json!({
+                        "source": src,
+                    })
+                },
+            },
         }
     }
 }

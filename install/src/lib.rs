@@ -172,12 +172,13 @@ pub enum SetupGenfstabError {
 #[derive(Debug, Snafu)]
 pub enum QuirksPreparationError {
     #[snafu(display("Failed to copy quirk script '{}' to '{}': {source}", src.display(), dst.display()))]
-    IOError {
+    Copy {
         source: std::io::Error,
         src: PathBuf,
         dst: PathBuf,
-    }
-
+    },
+    #[snafu(display("Could not get parent dir name for quirk script: {}", src.display()))]
+    GetName { src: PathBuf },
 }
 
 #[derive(Debug, Snafu)]
@@ -457,38 +458,38 @@ impl InstallConfig {
             if let Some(skip_stages) = quirk.skip_stages {
                 no_run.extend(skip_stages);
             }
+
             let path: PathBuf = quirk.command.into();
+
             // Since it returns an array of quirks, we must ensure the script names does not
             // collide with each other (this is definitely true since most of the quirks will
             // just use the default name).
-            let dirname = if let Some(d) = path.parent() {
-                if let Some(n) = d.file_name() {
-                    n.to_string_lossy()
-                } else {
-                    error!("Unable to get dirname of the quirk script '{}'", path.display());
-                    continue;
-                }
-            } else {
-                error!("Unable to get dirname of the quirk script '{}'", path.display());
-                continue;
-            };
+            let dirname = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .ok_or_else(|| InstallErr::PrepareQuirks {
+                    source: QuirksPreparationError::GetName {
+                        src: path.to_path_buf(),
+                    },
+                })?
+                .to_string_lossy();
+
             // It should not happen, but here we are anyways...
-            let basename = if let Some(n) = path.file_name() {
-                n
-            } else {
-                error!("Unable to get basename of the quirk script '{}'", path.display());
-                continue;
-            }.to_string_lossy();
-            let (filename, ext) = basename.split_once('.').unwrap_or((&basename, ""));
+            let basename = path
+                .file_prefix()
+                .ok_or_else(|| InstallErr::PrepareQuirks {
+                    source: QuirksPreparationError::GetName {
+                        src: path.to_path_buf(),
+                    },
+                })?;
+
+            let ext = path.extension();
+
             let transformed = format!(
                 "{}-{}{}",
-                filename,
+                basename.to_string_lossy(),
                 dirname,
-                if ext.is_empty() {
-                    ""
-                } else {
-                    &format!(".{}", ext)
-                }
+                ext.map(|s| s.to_string_lossy()).unwrap_or("".into()),
             );
 
             quirk_scripts.insert(path, transformed);
@@ -840,8 +841,20 @@ impl InstallConfig {
             let dst = root.join("tmp").join(transformed);
             info!("Copying '{}' -> '{}' ...", src.display(), dst.display());
             // Whatever... error handling is way too complicated there.
-            std::fs::copy(src, &dst).map_err(|e| QuirksPreparationError::IOError { source: e, src: src.clone(), dst: dst.clone() })?;
-            std::fs::set_permissions(&dst, Permissions::from_mode(0o755)).inspect_err(|e| error!("Failed to set file permissions for '{}': {}", &dst.display(), e)).ok();
+            std::fs::copy(src, &dst).map_err(|e| QuirksPreparationError::Copy {
+                source: e,
+                src: src.clone(),
+                dst: dst.clone(),
+            })?;
+            std::fs::set_permissions(&dst, Permissions::from_mode(0o755))
+                .inspect_err(|e| {
+                    error!(
+                        "Failed to set file permissions for '{}': {}",
+                        &dst.display(),
+                        e
+                    )
+                })
+                .ok();
         }
         Ok(true)
     }
