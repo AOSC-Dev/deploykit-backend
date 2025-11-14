@@ -1,7 +1,16 @@
 use std::{
-    collections::{HashMap, HashSet}, fmt::{Display, Formatter}, fs::{self, Permissions, create_dir_all, read_dir}, io::{self, Write}, os::{fd::OwnedFd, unix::fs::PermissionsExt}, path::{Path, PathBuf}, process::Command, sync::{
-        Arc, Mutex, atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering}
-    }, time::Duration
+    collections::{HashMap, HashSet},
+    fmt::{Display, Formatter},
+    fs::{self, create_dir_all, read_dir, Permissions},
+    io::{self, Write},
+    os::{fd::OwnedFd, unix::fs::PermissionsExt},
+    path::{Path, PathBuf},
+    process::Command,
+    sync::{
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+    time::Duration,
 };
 
 use chroot::ChrootError;
@@ -35,7 +44,18 @@ use utils::RunCmdError;
 use zoneinfo::SetZoneinfoError;
 
 use crate::{
-    chroot::{dive_into_guest, escape_chroot, get_dir_fd}, dracut::execute_dracut, genfstab::write_swap_entry_to_fstab, grub::execute_grub_install, hostname::set_hostname, locale::{set_hwclock_tc, set_locale}, mount::{remove_files_mounts, umount_root_path}, ssh::gen_ssh_key, swap::{create_swapfile, get_recommend_swap_size, swapoff}, user::{add_new_user, passwd_set_fullname}, utils::run_command, zoneinfo::set_zoneinfo
+    chroot::{dive_into_guest, escape_chroot, get_dir_fd},
+    dracut::execute_dracut,
+    genfstab::write_swap_entry_to_fstab,
+    grub::execute_grub_install,
+    hostname::set_hostname,
+    locale::{set_hwclock_tc, set_locale},
+    mount::{remove_files_mounts, umount_root_path},
+    ssh::gen_ssh_key,
+    swap::{create_swapfile, get_recommend_swap_size, swapoff},
+    user::{add_new_user, passwd_set_fullname},
+    utils::run_command,
+    zoneinfo::set_zoneinfo,
 };
 
 pub mod chroot;
@@ -118,7 +138,7 @@ pub enum InstallErr {
 //        shouldn't Snafu have done this automatically?
 impl From<RunCmdError> for InstallErr {
     fn from(value: RunCmdError) -> Self {
-        Self::Quirk{ source: value }
+        Self::Quirk { source: value }
     }
 }
 
@@ -393,7 +413,7 @@ impl Display for InstallationStage {
             Self::DownloadSquashfs => "download squashfs",
             Self::ExtractSquashfs => "extract squashfs",
             Self::GenerateFstab => "generate fstab",
-	    Self::PrepareQuirks => "prepare quirks",
+            Self::PrepareQuirks => "prepare quirks",
             Self::Chroot => "chroot",
             Self::Dracut => "run dracut",
             Self::InstallGrub => "install grub",
@@ -420,7 +440,7 @@ impl InstallationStage {
             Self::DownloadSquashfs => Self::ExtractSquashfs,
             Self::ExtractSquashfs => Self::GenerateFstab,
             Self::GenerateFstab => Self::PrepareQuirks,
-	        Self::PrepareQuirks => Self::Chroot,
+            Self::PrepareQuirks => Self::Chroot,
             Self::Chroot => Self::Dracut,
             Self::Dracut => Self::InstallGrub,
             Self::InstallGrub => Self::GenerateSshKey,
@@ -628,16 +648,22 @@ impl InstallConfig {
                     .map(|_| true),
                 InstallationStage::Quirk => {
                     for (_, transformed) in &quirk_scripts {
-		    	        // We are living inside the target system.
-			            // WARNING: be careful when playing with absolute paths!
+                        // We are living inside the target system.
+                        // WARNING: be careful when playing with absolute paths!
                         let cmd = PathBuf::from("/tmp").join(transformed);
-                        run_command("bash", ["-xc", &cmd.to_string_lossy()], vec![] as Vec<(String, String)>)?;
+                        run_command(
+                            "bash",
+                            ["-xc", &cmd.to_string_lossy()],
+                            vec![] as Vec<(String, String)>,
+                        )?;
 
                         std::fs::remove_file(&cmd).unwrap();
                     }
 
                     Ok(true)
-                }.context(QuirkSnafu).map(|_| true),
+                }
+                .context(QuirkSnafu)
+                .map(|_| true),
                 InstallationStage::Done => break,
             };
 
