@@ -277,9 +277,6 @@ pub fn auto_create_partitions_gpt(
     // 创建新的分区表
     let mut gpt = GPT::new_from(&mut f, sector_size, generate_gpt_random_uuid())?;
 
-    // 写一个假的 MBR 保护分区头
-    GPT::write_protective_mbr_into(&mut f, sector_size).map_err(PartitionError::GptMan)?;
-
     // 起始扇区为 1MiB 除以扇区大小
     let starting_lba = 1024 * 1024 / sector_size;
 
@@ -292,6 +289,9 @@ pub fn auto_create_partitions_gpt(
     // 应用分区表的修改
     gpt.write_into(&mut f)?;
     f.sync_all().map_err(PartitionError::Flush)?;
+
+    // 写一个假的 MBR 保护分区头
+    GPT::write_protective_mbr_into(&mut f, sector_size).map_err(PartitionError::GptMan)?;
 
     // 重新读取分区表以读取刚刚的修改
     gptman::linux::reread_partition_table(&mut f).map_err(PartitionError::GetTable)?;
