@@ -3,7 +3,7 @@
 # Enable error trapping.
 set -Eeuo pipefail
 
-# HO-Z6000G does not support booting via ID.
+# UNIS L3891 G2 does not support booting via ID.
 grub-install \
 	--force-extra-removable
 
