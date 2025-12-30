@@ -9,7 +9,7 @@ edition = "2021"
 libparted = "0.1"
 libparted-sys = "0.3"
 tracing = "0.1"
-fancy-regex = "0.16"
+fancy-regex = "0.17"
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 gptman = "2"

@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-toml = "0.8"
+toml = "0.9"
 serde = { version = "1", features = ["derive"] }
 walkdir = "2"
-fancy-regex = "0.14.0"
+fancy-regex = "0.17.0"
 glob = "0.3"
 snafu = "0.8"
 tracing = "0.1.40"
