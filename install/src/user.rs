@@ -51,7 +51,7 @@ pub fn passwd_set_fullname(full_name: &str, username: &str) -> Result<(), SetFul
 
     set_full_name(full_name, username, &mut passwd)?;
     f.seek(SeekFrom::Start(0)).context(OperatePasswdFileSnafu)?;
-    f.write_all(passwd.join("\n").as_bytes())
+    f.write_all((passwd.join("\n") + "\n").as_bytes())
         .context(OperatePasswdFileSnafu)?;
 
     Ok(())
