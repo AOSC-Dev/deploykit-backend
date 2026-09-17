@@ -1,0 +1,6 @@
+[model]
+type = "dmi"
+dmi_pattern = "dmi:.*pnN80zG2e:.*rnLXKT-ZXG-N8P:.*"
+
+[quirk]
+skip_stages = ["InstallGrub"]
