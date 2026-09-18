@@ -9,7 +9,7 @@ use std::{
 use gptman::GPT;
 use libparted::{Device, Disk, IsZero};
 use mbrman::MBR;
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use tracing::{debug, info};
