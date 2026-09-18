@@ -27,7 +27,7 @@ install = { path = "./install" }
 members = ["disk", "install", "quirk"]
 
 [dev-dependencies]
-clap = { version =  "4.5.20", features = ["derive"] }
+clap = { version = "4.5.20", features = ["derive"] }
 
 [build-dependencies]
 vergen-gix = "10"
@@ -36,3 +36,6 @@ vergen = "10"
 [features]
 default = []
 is_retro = ["install/is_retro"]
+
+[patch.crates-io]
+libparted-sys = { git = "https://github.com/cholcombe973/libparted-sys", rev = "2ff397e128933b0f2730a18087fc5b55b581340d" }
