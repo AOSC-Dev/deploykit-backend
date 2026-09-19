@@ -1,3 +1,5 @@
+use digest_io::IoWrapper;
+use std::io;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
@@ -228,10 +230,10 @@ async fn http_download_file_inner(
         let file = std::fs::File::open(&pc).context(CreateFileSnafu { path: pc.clone() })?;
         let mut buf = BufReader::new(file);
 
-        let mut sha256 = Sha256::new();
-        std::io::copy(&mut buf, &mut sha256).context(WriteFileSnafu { path: pc.clone() })?;
+        let mut sha256 = IoWrapper(Sha256::new());
+        io::copy(&mut buf, &mut sha256).context(WriteFileSnafu { path: pc.clone() })?;
 
-        let download_hash = sha256.finalize().to_vec();
+        let download_hash = sha256.0.finalize().to_vec();
         let checksum = hex_string(&download_hash);
 
         debug!("Right hash: {hash}");
