@@ -1,4 +1,6 @@
-use std::io::{BufReader, Read};
+use digest_io::IoWrapper;
+use std::io;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -38,11 +40,6 @@ pub enum DownloadError {
     },
     #[snafu(display("Failed to write file: {}", path.display()))]
     WriteFile {
-        source: std::io::Error,
-        path: PathBuf,
-    },
-    #[snafu(display("Failed to read file: {}", path.display()))]
-    ReadFile {
         source: std::io::Error,
         path: PathBuf,
     },
@@ -233,20 +230,10 @@ async fn http_download_file_inner(
         let file = std::fs::File::open(&pc).context(CreateFileSnafu { path: pc.clone() })?;
         let mut buf = BufReader::new(file);
 
-        // sha2 0.11 起哈希器不再实现 io::Write，只能分块读出来手动喂给它
-        let mut sha256 = Sha256::new();
-        let mut chunk = vec![0_u8; 64 * 1024];
-        loop {
-            let len = buf
-                .read(&mut chunk)
-                .context(ReadFileSnafu { path: pc.clone() })?;
-            if len == 0 {
-                break;
-            }
-            sha256.update(&chunk[..len]);
-        }
+        let mut sha256 = IoWrapper(Sha256::new());
+        io::copy(&mut buf, &mut sha256).context(WriteFileSnafu { path: pc.clone() })?;
 
-        let download_hash = sha256.finalize().to_vec();
+        let download_hash = sha256.0.finalize().to_vec();
         let checksum = hex_string(&download_hash);
 
         debug!("Right hash: {hash}");

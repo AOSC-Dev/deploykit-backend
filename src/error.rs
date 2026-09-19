@@ -790,16 +790,6 @@ impl From<&DownloadError> for DkError {
                     })
                 },
             },
-            DownloadError::ReadFile { source, path } => Self {
-                message: value.to_string(),
-                t: "ReadFile".to_string(),
-                data: {
-                    json!({
-                        "message": source.to_string(),
-                        "path": path.display().to_string()
-                    })
-                },
-            },
             DownloadError::ChecksumMismatch => Self {
                 message: value.to_string(),
                 t: "ChecksumMismatch".to_string(),
