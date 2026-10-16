@@ -1,0 +1,6 @@
+[model]
+type = "dmi"
+dmi_pattern = "dmi:.*MS-7D42:.*rnMAGB660MMORTARDDR4(MS-7D42):.*"
+
+[quirk]
+skip_stages = ["InstallGrub"]
