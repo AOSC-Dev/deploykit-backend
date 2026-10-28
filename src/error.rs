@@ -426,6 +426,16 @@ impl From<&ConfigureSystemError> for DkError {
                     })
                 },
             },
+            ConfigureSystemError::SetKeyboard { source, layout } => Self {
+                message: value.to_string(),
+                t: "SetKeyboard".to_string(),
+                data: {
+                    json!({
+                        "layout": layout.to_string(),
+                        "message": source.to_string(),
+                    })
+                },
+            },
         }
     }
 }

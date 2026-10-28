@@ -24,6 +24,7 @@ use download::{download_file, DownloadError, FilesType};
 use extract::{extract_squashfs, rsync_system, RsyncError};
 use genfstab::{genfstab_to_file, GenfstabError};
 use grub::RunGrubError;
+pub use keyboard::{Keyboard, SetKeyboardError};
 use locale::SetHwclockError;
 use mount::{mount_root_path, UmountError};
 use num_enum::IntoPrimitive;
@@ -49,6 +50,7 @@ use crate::{
     genfstab::write_swap_entry_to_fstab,
     grub::execute_grub_install,
     hostname::set_hostname,
+    keyboard::set_keyboard,
     locale::{set_hwclock_tc, set_locale},
     mount::{remove_files_mounts, umount_root_path},
     ssh::gen_ssh_key,
@@ -65,6 +67,7 @@ mod extract;
 pub mod genfstab;
 pub mod grub;
 pub mod hostname;
+pub mod keyboard;
 pub mod locale;
 pub mod mount;
 mod ssh;
@@ -179,6 +182,11 @@ pub enum ConfigureSystemError {
         source: std::io::Error,
         locale: String,
     },
+    #[snafu(display("Failed to set keyboard layout: {layout}"))]
+    SetKeyboard {
+        source: SetKeyboardError,
+        layout: String,
+    },
 }
 
 #[derive(Debug, Snafu)]
@@ -282,6 +290,7 @@ pub struct InstallConfigPrepare {
     pub user: Option<User>,
     pub rtc_as_localtime: bool,
     pub hostname: Option<String>,
+    pub keyboard: Keyboard,
     pub swapfile: SwapFile,
     pub target_partition: Arc<Mutex<Option<DkPartition>>>,
     pub efi_partition: Arc<Mutex<Option<DkPartition>>>,
@@ -311,6 +320,7 @@ impl Default for InstallConfigPrepare {
             user: None,
             rtc_as_localtime: false,
             hostname: None,
+            keyboard: Keyboard::default(),
             swapfile: SwapFile::Automatic,
             target_partition: Arc::new(Mutex::new(None)),
             efi_partition: Arc::new(Mutex::new(None)),
@@ -326,6 +336,7 @@ pub struct InstallConfig {
     user: User,
     rtc_as_localtime: bool,
     hostname: String,
+    keyboard: Keyboard,
     swapfile: SwapFile,
     pub target_partition: DkPartition,
     efi_partition: Option<DkPartition>,
@@ -352,6 +363,7 @@ impl TryFrom<InstallConfigPrepare> for InstallConfig {
             hostname: value.hostname.context(ValueNotSetSnafu {
                 v: NotSetValue::Hostname,
             })?,
+            keyboard: value.keyboard,
             swapfile: value.swapfile,
             target_partition: {
                 let lock = value.target_partition.lock().unwrap();
@@ -999,6 +1011,21 @@ impl InstallConfig {
         info!("Setting locale ...");
         set_locale(&self.local).context(SetLocaleSnafu {
             locale: self.local.to_string(),
+        })?;
+
+        cancel_install_exit!(cancel_install);
+
+        info!(
+            "Setting keyboard layout as {}{} ...",
+            self.keyboard.layout,
+            self.keyboard
+                .variant
+                .as_ref()
+                .map(|x| format!(" ({x})"))
+                .unwrap_or_default()
+        );
+        set_keyboard(&self.keyboard).context(SetKeyboardSnafu {
+            layout: self.keyboard.layout.to_string(),
         })?;
 
         progress.store(100, Ordering::SeqCst);
