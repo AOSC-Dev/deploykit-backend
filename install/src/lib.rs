@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{Display, Formatter},
+    fmt::{Debug, Display, Formatter},
     fs::{self, create_dir_all, read_dir, Permissions},
     io::{self, Write},
     os::{fd::OwnedFd, unix::fs::PermissionsExt},
@@ -287,12 +287,28 @@ pub struct InstallConfigPrepare {
     pub efi_partition: Arc<Mutex<Option<DkPartition>>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct User {
     pub username: String,
     pub password: String,
     pub root_password: Option<String>,
     pub full_name: Option<String>,
+}
+
+// Never print passwords: the install config is logged and the log is copied
+// into the installed system.
+impl Debug for User {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("User")
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .field(
+                "root_password",
+                &self.root_password.as_ref().map(|_| "<redacted>"),
+            )
+            .field("full_name", &self.full_name)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -1145,6 +1161,8 @@ impl InstallConfig {
         let log_path = tmp_mount_path.join("var/log/dklog");
         // 先把日志写回已安装的系统
         create_dir_all(&log_path).ok()?;
+        // 日志可能含有敏感信息，仅限 root 读取
+        fs::set_permissions(&log_path, Permissions::from_mode(0o700)).ok()?;
         let dir = read_dir("/tmp").ok()?;
 
         for entry in dir.flatten() {
@@ -1153,7 +1171,9 @@ impl InstallConfig {
                 continue;
             }
 
-            fs::copy(entry.path(), log_path.join(file_name)).ok()?;
+            let dst = log_path.join(file_name);
+            fs::copy(entry.path(), &dst).ok()?;
+            fs::set_permissions(&dst, Permissions::from_mode(0o600)).ok()?;
         }
 
         Some(())
