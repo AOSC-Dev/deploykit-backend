@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "deploykit-backend"
-version = "0.10.2"
+version = "0.10.3"
 dependencies = [
  "clap",
  "ctrlc",
