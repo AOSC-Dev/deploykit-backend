@@ -65,10 +65,9 @@ pub fn get_partition_table_type(device_path: &Path) -> Result<String, io::Error>
 pub fn auto_create_partitions(
     dev_path: &Path,
 ) -> Result<(Option<DkPartition>, DkPartition), PartitionError> {
-    // 处理 lvm 的情况
-    if is_lvm_device(dev_path)? {
-        remove_all_lvm_device()?;
-    }
+    // 处理 lvm 的情况：只停用 PV 位于目标设备（或其分区）上的 LV，
+    // 不要触碰其它磁盘上的 LVM 设备。
+    deactivate_lvm_devices_on(dev_path)?;
 
     if is_efi_booted() {
         let (efi, system) = auto_create_partitions_gpt(dev_path)?;
@@ -78,64 +77,143 @@ pub fn auto_create_partitions(
     Ok((None, auto_create_partitions_mbr(dev_path)?))
 }
 
-fn remove_all_lvm_device() -> Result<(), PartitionError> {
-    let output = Command::new("dmsetup")
-        .arg("ls")
+/// 返回所有 PV 位于 `dev_path`（或其分区）上的 LV 全名。
+///
+/// 注意这里只看 LVM 逻辑卷，不会返回 `live-base`、`live-rw` 这类
+/// 由 live-boot 创建的普通 device-mapper 设备。
+fn lvm_devices_on(dev_path: &Path) -> Result<Vec<String>, PartitionError> {
+    let output = Command::new("lvs")
+        .args(["--segments", "--noheadings", "-o", "lv_full_name,devices"])
         .output()
-        .map_err(|e| PartitionError::DmSetup { source: e })?;
+        .map_err(PartitionError::OpenLvs)?;
+
+    // 没有 LVM 时 lvs 可能返回非零状态码，此时 stdout 为空，按“没有 LV”处理。
+    if !output.status.success() {
+        debug!(
+            "lvs failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
 
     let output = String::from_utf8_lossy(&output.stdout);
-    let lines = output.lines();
+    let mut lv_names = Vec::new();
 
-    for line in lines {
-        let mut line = line.split_whitespace();
-        let lvm_name = line.next().ok_or_else(|| PartitionError::DmSetup {
-            source: io::Error::new(ErrorKind::BrokenPipe, "Failed to read dmsetup stdout"),
-        })?;
+    for line in output.lines() {
+        let mut fields = line.split_whitespace();
+        let Some(lv_name) = fields.next() else {
+            continue;
+        };
 
-        if lvm_name != "live-base" && lvm_name != "live-rw" {
-            info!("Running dmsetup remove {}", lvm_name);
-            let remove = Command::new("dmsetup")
-                .arg("remove")
-                .arg(lvm_name)
+        // `devices` 字段可能包含多个 PV，形如 `/dev/sda1(0),/dev/sdb1(0)`。
+        let uses_target = fields
+            .flat_map(|field| field.split(','))
+            .any(|pv| pv_belongs_to(pv, dev_path));
+
+        // 一个 LV 会按 segment 输出多行，需要去重。
+        if uses_target && !lv_names.iter().any(|name| name == lv_name) {
+            lv_names.push(lv_name.to_string());
+        }
+    }
+
+    Ok(lv_names)
+}
+
+/// 停用 PV 位于 `dev_path`（或其分区）上的 LV。
+///
+/// 使用 `lvchange -an` 而不是 `dmsetup remove`，因为它会同时更新 LVM 元数据，
+/// 并且 LV 全名不需要处理 device-mapper 名称中的 `-` 转义。
+fn deactivate_lvm_devices_on(dev_path: &Path) -> Result<(), PartitionError> {
+    let mut lv_names = lvm_devices_on(dev_path)?;
+
+    // lvs 不保证按依赖顺序输出（某些 LV 之间存在依赖），
+    // 因此失败时重试，直到全部停用或没有任何进展。
+    while !lv_names.is_empty() {
+        let count = lv_names.len();
+        let mut failed = Vec::new();
+        let mut last_error = None;
+
+        for lv_name in lv_names {
+            let output = Command::new("lvchange")
+                .arg("-an")
+                .arg(&lv_name)
                 .output()
-                .map_err(|e| PartitionError::DmSetup { source: e })?;
+                .map_err(|e| PartitionError::LvmCommand {
+                    cmd: format!("lvchange -an {lv_name}"),
+                    stderr: e.to_string(),
+                })?;
 
-            debug!("Stdout: {}", String::from_utf8_lossy(&remove.stdout));
-            debug!("Stderr: {}", String::from_utf8_lossy(&remove.stderr));
+            debug!(
+                "lvchange -an {lv_name}: stdout={}, stderr={}",
+                String::from_utf8_lossy(&output.stdout).trim(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
 
-            if !remove.status.success() {
-                return Err(PartitionError::DmSetup {
-                    source: io::Error::other(format!("Failed to remove lvm device: {lvm_name}")),
+            if output.status.success() {
+                info!("Deactivated LVM device {lv_name}");
+            } else {
+                last_error = Some(PartitionError::LvmCommand {
+                    cmd: format!("lvchange -an {lv_name}"),
+                    stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
                 });
+                failed.push(lv_name);
             }
         }
+
+        if failed.len() == count {
+            return Err(last_error.expect("failed is not empty"));
+        }
+
+        lv_names = failed;
     }
 
     Ok(())
 }
 
-pub fn is_lvm_device(p: &Path) -> Result<bool, PartitionError> {
-    let cmd = Command::new("lvs")
-        .arg("--segments")
-        .arg("-o")
-        .arg("+devices")
-        .output()
-        .map_err(PartitionError::OpenLvs)?;
+fn pv_belongs_to(pv: &str, dev_path: &Path) -> bool {
+    // `devices` 字段格式为 `/dev/sda1(0)`，去掉偏移量后再比较。
+    let pv = pv.split_once('(').map_or(pv, |(path, _)| path);
+    let pv = Path::new(pv);
 
-    let output = String::from_utf8_lossy(&cmd.stdout);
-    for i in output.lines().skip(1) {
-        let mut split = i.split_whitespace();
-        if split
-            .next_back()
-            .map(|x| x.trim().starts_with(&p.to_string_lossy().to_string()))
-            .unwrap_or(false)
-        {
-            return Ok(true);
-        }
+    pv == dev_path || is_partition_of(pv, dev_path)
+}
+
+fn is_partition_of(part: &Path, disk: &Path) -> bool {
+    if part.parent() != disk.parent() {
+        return false;
     }
 
-    Ok(false)
+    let (Some(part_name), Some(disk_name)) = (
+        part.file_name().and_then(|name| name.to_str()),
+        disk.file_name().and_then(|name| name.to_str()),
+    ) else {
+        return false;
+    };
+
+    let Some(suffix) = part_name.strip_prefix(disk_name) else {
+        return false;
+    };
+
+    if suffix.is_empty() {
+        return false;
+    }
+
+    // nvme0n1 -> nvme0n1p1、mmcblk0 -> mmcblk0p1；
+    // sda -> sda1。
+    let suffix = if disk_name.ends_with(|c: char| c.is_ascii_digit()) {
+        match suffix.strip_prefix('p') {
+            Some(suffix) => suffix,
+            None => return false,
+        }
+    } else {
+        suffix
+    };
+
+    !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
+}
+
+pub fn is_lvm_device(p: &Path) -> Result<bool, PartitionError> {
+    Ok(!lvm_devices_on(p)?.is_empty())
 }
 
 pub fn format_partition(partition: &DkPartition) -> Result<(), PartitionError> {
@@ -619,4 +697,59 @@ pub fn find_root_mount_point() -> Result<String, PartitionError> {
         ErrorKind::InvalidInput,
         "Failed to read /proc/mounts",
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn partition_paths_are_matched_precisely() {
+        assert!(is_partition_of(
+            Path::new("/dev/sda1"),
+            Path::new("/dev/sda")
+        ));
+        assert!(is_partition_of(
+            Path::new("/dev/nvme0n1p1"),
+            Path::new("/dev/nvme0n1")
+        ));
+        assert!(is_partition_of(
+            Path::new("/dev/mmcblk0p1"),
+            Path::new("/dev/mmcblk0")
+        ));
+        assert!(is_partition_of(
+            Path::new("/dev/loop30p1"),
+            Path::new("/dev/loop30")
+        ));
+
+        // 不能把另一个设备误认为目标设备的分区。
+        assert!(!is_partition_of(
+            Path::new("/dev/sda"),
+            Path::new("/dev/sda")
+        ));
+        assert!(!is_partition_of(
+            Path::new("/dev/sdaa1"),
+            Path::new("/dev/sda")
+        ));
+        assert!(!is_partition_of(
+            Path::new("/dev/nvme0n10"),
+            Path::new("/dev/nvme0n1")
+        ));
+        assert!(!is_partition_of(
+            Path::new("/dev/sdb1"),
+            Path::new("/dev/sda")
+        ));
+    }
+
+    #[test]
+    fn pv_devices_are_matched_without_offsets() {
+        assert!(pv_belongs_to("/dev/sda(0)", Path::new("/dev/sda")));
+        assert!(pv_belongs_to("/dev/sda1(0)", Path::new("/dev/sda")));
+        assert!(pv_belongs_to(
+            "/dev/nvme0n1p2(0)",
+            Path::new("/dev/nvme0n1")
+        ));
+        assert!(!pv_belongs_to("/dev/sdaa1(0)", Path::new("/dev/sda")));
+        assert!(!pv_belongs_to("/dev/sdb1(0)", Path::new("/dev/sda")));
+    }
 }
