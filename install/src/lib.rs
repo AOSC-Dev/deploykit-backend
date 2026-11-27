@@ -640,7 +640,9 @@ impl InstallConfig {
                     .swapoff_impl(&tmp_mount_path)
                     .context(PostInstallationSnafu),
                 InstallationStage::CopyLog => {
-                    let _ = self.copy_log_to_install_system(&tmp_mount_path);
+                    if let Err(e) = self.copy_log_to_install_system(&tmp_mount_path) {
+                        warn!("Unable to copy log to the installed system: {}", e);
+                    }
                     Ok(true)
                 }
                 InstallationStage::UmountInnerPath => remove_files_mounts(&tmp_mount_path)
@@ -1157,13 +1159,13 @@ impl InstallConfig {
         Ok(true)
     }
 
-    fn copy_log_to_install_system(&self, tmp_mount_path: &Path) -> Option<()> {
+    fn copy_log_to_install_system(&self, tmp_mount_path: &Path) -> io::Result<()> {
         let log_path = tmp_mount_path.join("var/log/dklog");
         // 先把日志写回已安装的系统
-        create_dir_all(&log_path).ok()?;
+        create_dir_all(&log_path)?;
         // 日志可能含有敏感信息，仅限 root 读取
-        fs::set_permissions(&log_path, Permissions::from_mode(0o700)).ok()?;
-        let dir = read_dir("/tmp").ok()?;
+        fs::set_permissions(&log_path, Permissions::from_mode(0o700))?;
+        let dir = read_dir("/tmp")?;
 
         for entry in dir.flatten() {
             let file_name = entry.file_name().to_string_lossy().to_string();
@@ -1172,11 +1174,11 @@ impl InstallConfig {
             }
 
             let dst = log_path.join(file_name);
-            fs::copy(entry.path(), &dst).ok()?;
-            fs::set_permissions(&dst, Permissions::from_mode(0o600)).ok()?;
+            fs::copy(entry.path(), &dst)?;
+            fs::set_permissions(&dst, Permissions::from_mode(0o600))?;
         }
 
-        Some(())
+        Ok(())
     }
 }
 
