@@ -61,6 +61,8 @@ pub enum PartitionError {
     DmSetup { source: std::io::Error },
     #[error("Failed to open lvs")]
     OpenLvs(std::io::Error),
+    #[error("LVM command `{cmd}` failed: {stderr}")]
+    LvmCommand { cmd: String, stderr: String },
 }
 
 impl Serialize for PartitionError {
