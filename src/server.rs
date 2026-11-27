@@ -20,7 +20,7 @@ use disk::{
     },
 };
 use install::{
-    DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, SwapFile, User,
+    DownloadType, InstallConfig, InstallConfigPrepare, InstallErr, Keyboard, SwapFile, User,
     chroot::{escape_chroot, get_dir_fd},
     mount::{remove_files_mounts, sync_disk, umount_root_path},
     swap::{get_recommend_swap_size, swapoff},
@@ -149,6 +149,7 @@ impl DeploykitServer {
                 "download" => Message::check_is_set(field, &self.config.download),
                 "user" => Message::check_is_set(field, &self.config.user),
                 "hostname" => Message::check_is_set(field, &self.config.hostname),
+                "keyboard" => Message::ok(&self.config.keyboard),
                 "rtc_as_localtime" => Message::ok(&self.config.rtc_as_localtime.to_string()),
                 "target_partition" => {
                     let lock = self.config.target_partition.lock().unwrap();
@@ -486,6 +487,19 @@ fn set_config_inner(
         }
         "hostname" => {
             config.hostname = Some(value.to_string());
+            Ok(())
+        }
+        "keyboard" => {
+            config.keyboard = serde_json::from_str::<Keyboard>(value).map_err(|e| DkError {
+                message: e.to_string(),
+                t: "SetValue".to_string(),
+                data: {
+                    json!({
+                        "field": "keyboard".to_string(),
+                        "value": value.to_string(),
+                    })
+                },
+            })?;
             Ok(())
         }
         "rtc_as_localtime" => match value {
